@@ -512,7 +512,12 @@ export function Inspector() {
         {error && (
           <div className="error-banner">
             <strong>Error:</strong> {error}
-            <button className="link-btn" onClick={() => setError(null)}>dismiss</button>
+            <div className="error-banner__actions">
+              {!isBusy && (
+                <button className="link-btn" onClick={onGenerate}>retry</button>
+              )}
+              <button className="link-btn" onClick={() => setError(null)}>dismiss</button>
+            </div>
           </div>
         )}
 

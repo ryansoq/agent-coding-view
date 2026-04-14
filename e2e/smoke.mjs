@@ -689,22 +689,32 @@ try {
 
   await mockedPage.unroute('https://api.anthropic.com/**');
 
-  // 14. API error path — 401 from Anthropic should land in the error
-  // banner, not crash the app. Verifies the SDK's typed exceptions
-  // propagate through generateBody → onError → setError.
-  log('\n=== 14. API 401 lands in error banner ===');
+  // 14. API error path — 401 from Anthropic lands in the error banner,
+  // Retry button then recovers when the mock flips to 200. Verifies the
+  // typed-exception propagation AND the retry UX end-to-end.
+  log('\n=== 14. API 401 lands in error banner, Retry recovers ===');
+  let errorCalls = 0;
   await mockedPage.route('https://api.anthropic.com/**', async (route) => {
-    await route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        type: 'error',
-        error: {
-          type: 'authentication_error',
-          message: 'invalid x-api-key',
-        },
-      }),
-    });
+    errorCalls++;
+    if (errorCalls === 1) {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          type: 'error',
+          error: { type: 'authentication_error', message: 'invalid x-api-key' },
+        }),
+      });
+    } else {
+      // Second call = retry path — return a successful SSE stream so the
+      // block populates with the recovered body.
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        headers: { 'cache-control': 'no-cache' },
+        body: buildSse('return "recovered";'),
+      });
+    }
   });
   const errNodes = mockedPage.locator('.react-flow__node');
   const errCount = await errNodes.count();
@@ -732,6 +742,23 @@ try {
     }
     const stuck = await mockedPage.locator('.fblock.status-generating').count();
     check('block exits generating on 401', stuck === 0, `${stuck} still generating`);
+
+    // Click Retry — mock's second call returns a successful body.
+    await mockedPage.locator('.error-banner button', { hasText: 'retry' }).click();
+    try {
+      await mockedPage.waitForFunction(
+        () => document.querySelector('.body-view')?.textContent?.includes('recovered'),
+        { timeout: 6000 },
+      );
+      check('retry succeeds on second call', true);
+    } catch {
+      const bodyText = await mockedPage.locator('.body-view').first().textContent();
+      check('retry succeeds on second call', false, `body: "${(bodyText || '').slice(0, 120)}"`);
+    }
+    check('retry caused a second endpoint hit', errorCalls === 2, `errorCalls=${errorCalls}`);
+    // Error banner should be gone after success
+    const postRetryBanner = await mockedPage.locator('.error-banner').count();
+    check('error banner cleared after successful retry', postRetryBanner === 0, `${postRetryBanner} banners`);
   }
 
   await mockedPage.unroute('https://api.anthropic.com/**');
