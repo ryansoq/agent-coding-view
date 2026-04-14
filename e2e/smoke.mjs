@@ -490,6 +490,106 @@ try {
   }
 
   await mockedPage.unroute('https://api.anthropic.com/**');
+
+  // 12. Auto TDD convergence — stateful mock returns a buggy body on the
+  // first call and the correct one on the second. Verifies the full
+  // Generate→Run→feedback→Regenerate loop.
+  log('\n=== 12. auto TDD convergence (stateful mock) ===');
+
+  function buildSse(bodyText) {
+    const chunks = ['```js\n', bodyText + '\n', '```'];
+    const events = [
+      ['message_start', {
+        type: 'message_start',
+        message: {
+          id: 'msg_mock',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 0 },
+        },
+      }],
+      ['content_block_start', {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      }],
+      ...chunks.map((t) => ['content_block_delta', {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: t },
+      }]),
+      ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+      ['message_delta', {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn', stop_sequence: null },
+        usage: { output_tokens: 5 },
+      }],
+      ['message_stop', { type: 'message_stop' }],
+    ];
+    return (
+      events.map(([name, payload]) => `event: ${name}\ndata: ${JSON.stringify(payload)}\n`).join('\n') + '\n'
+    );
+  }
+
+  let tddCalls = 0;
+  await mockedPage.route('https://api.anthropic.com/**', async (route) => {
+    tddCalls++;
+    const body = tddCalls === 1 ? 'return 0;' : 'return 42;';
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      headers: { 'cache-control': 'no-cache', 'access-control-allow-origin': '*' },
+      body: buildSse(body),
+    });
+  });
+
+  // Select validate on the mocked page (fresh seed — original tests intact).
+  const tddNodes = mockedPage.locator('.react-flow__node');
+  const tddCount = await tddNodes.count();
+  let validIdx2 = -1;
+  for (let i = 0; i < tddCount; i++) {
+    const val = await tddNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'validate') { validIdx2 = i; break; }
+  }
+  check('found validate for Auto TDD', validIdx2 >= 0);
+  if (validIdx2 >= 0) {
+    await tddNodes.nth(validIdx2).locator('.fblock__body').click();
+    await mockedPage.waitForTimeout(200);
+    // Replace tests with a single assertion that distinguishes 0 from 42.
+    const tddTestsBox = mockedPage.locator('.inspector textarea').first();
+    await tddTestsBox.fill(`test('returns 42', () => expect(validate('x')).toBe(42));`);
+
+    await mockedPage.locator('.inspector button').filter({ hasText: 'Auto TDD' }).click();
+
+    // Wait for the block to reach passing status (the regen loop converges).
+    try {
+      await mockedPage.waitForSelector('.fblock.status-passing', { timeout: 10000 });
+      check('Auto TDD converged to passing', true);
+    } catch {
+      const curStatus = await mockedPage.locator('.inspector__title').textContent();
+      check(
+        'Auto TDD converged to passing',
+        false,
+        `inspector title now: ${curStatus}, tddCalls=${tddCalls}`,
+      );
+    }
+
+    check('Auto TDD made exactly 2 generate calls', tddCalls === 2, `tddCalls=${tddCalls}`);
+
+    // Verify the body on the block is the fixed version.
+    const finalBody = await mockedPage.locator('.inspector .body-view').first().textContent();
+    check(
+      'final body is the second-iteration fix',
+      finalBody?.includes('return 42;') ?? false,
+      `body: "${(finalBody || '').trim()}"`,
+    );
+  }
+
+  await mockedPage.unroute('https://api.anthropic.com/**');
   await mockedPage.close();
 
   log('\n=== console/page errors during run ===');
