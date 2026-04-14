@@ -48,6 +48,44 @@ describe('extractParams', () => {
   it('extra whitespace is trimmed', () => {
     expect(extractParams('(  a  ,   b  )')).toEqual(['a', 'b']);
   });
+
+  it('TS generic with comma inside does not split on that comma', () => {
+    expect(extractParams('(m: Map<string, number>, n: number)')).toEqual([
+      'm',
+      'n',
+    ]);
+  });
+
+  it('nested generic with multiple inner commas', () => {
+    expect(
+      extractParams('(x: Record<string, Array<number>>, y: string)'),
+    ).toEqual(['x', 'y']);
+  });
+
+  it('object-literal default with commas inside', () => {
+    expect(extractParams('(a = {x: 1, y: 2}, b)')).toEqual([
+      'a = {x: 1, y: 2}',
+      'b',
+    ]);
+  });
+
+  it('array-literal default with commas inside', () => {
+    expect(extractParams('(arr = [1, 2, 3])')).toEqual(['arr = [1, 2, 3]']);
+  });
+
+  it('destructured object parameter stays whole', () => {
+    expect(extractParams('({a, b})')).toEqual(['{a, b}']);
+  });
+
+  it('destructured object with type annotation', () => {
+    expect(extractParams('({a, b}: {a: number, b: number})')).toEqual(['{a, b}']);
+  });
+
+  it('function-typed parameter with its own parens', () => {
+    expect(
+      extractParams('(f: (x: number) => number, seed: number)'),
+    ).toEqual(['f', 'seed']);
+  });
 });
 
 describe('sanitizeName', () => {

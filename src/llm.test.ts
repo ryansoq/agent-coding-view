@@ -66,4 +66,18 @@ describe('extractCodeBlock', () => {
     const input = '```js\nconst x = 1;\nreturn x + 2;\n```';
     expect(extractCodeBlock(input)).toBe('const x = 1;\nreturn x + 2;');
   });
+
+  it('unwraps function with nested parens in parameter type', () => {
+    const input =
+      '```js\nfunction foo(f: (x: number) => number) {\n  return f(1);\n}\n```';
+    expect(extractCodeBlock(input)).toBe('return f(1);');
+  });
+
+  it('unwraps function with nested braces in body', () => {
+    const input =
+      '```js\nfunction foo(x) {\n  if (x) {\n    return 1;\n  }\n  return 0;\n}\n```';
+    expect(extractCodeBlock(input)).toBe(
+      'if (x) {\n    return 1;\n  }\n  return 0;',
+    );
+  });
 });

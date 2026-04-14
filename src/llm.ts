@@ -103,20 +103,95 @@ function dedent(text: string): string {
   return lines.map((l) => l.slice(minIndent)).join('\n');
 }
 
+/**
+ * Advance from `i` past a balanced pair opened by `code[i]`, where `code[i]`
+ * is one of `(`, `{`, `[`. Returns the index AFTER the closing character, or
+ * -1 if the bracket is unmatched. Skips string literals so brackets inside
+ * `"a(b)"` don't affect depth.
+ */
+function skipBalanced(code: string, i: number): number {
+  const open = code[i];
+  const close = open === '(' ? ')' : open === '{' ? '}' : open === '[' ? ']' : '';
+  if (!close) return -1;
+  let depth = 1;
+  let inString: false | string = false;
+  i++;
+  while (i < code.length && depth > 0) {
+    const ch = code[i];
+    if (inString) {
+      if (ch === '\\' && i + 1 < code.length) { i += 2; continue; }
+      if (ch === inString) inString = false;
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { inString = ch; i++; continue; }
+    if (ch === open) depth++;
+    else if (ch === close) depth--;
+    i++;
+  }
+  return depth === 0 ? i : -1;
+}
+
+/**
+ * If `code` is a single JavaScript function declaration — either
+ * `function name(...) { body }` or `const name = (...) => { body }` —
+ * return just the body. Otherwise return null. Bracket-balanced so nested
+ * parens/braces in parameter types and bodies don't break the unwrap.
+ */
+function unwrapJsFunction(code: string): string | null {
+  // Match `function NAME` prefix
+  const fnMatch = code.match(/^function\s+\w+\s*/);
+  const arrowMatch = code.match(
+    /^(?:const|let|var)\s+\w+\s*=\s*(?:async\s+)?/,
+  );
+  let i: number;
+  let kind: 'decl' | 'arrow';
+  if (fnMatch) {
+    i = fnMatch[0].length;
+    kind = 'decl';
+  } else if (arrowMatch) {
+    i = arrowMatch[0].length;
+    kind = 'arrow';
+  } else {
+    return null;
+  }
+
+  if (code[i] !== '(') return null;
+  const afterParams = skipBalanced(code, i);
+  if (afterParams < 0) return null;
+  i = afterParams;
+
+  // Skip whitespace + arrow if needed
+  while (i < code.length && /\s/.test(code[i])) i++;
+  if (kind === 'arrow') {
+    if (code[i] === '=' && code[i + 1] === '>') {
+      i += 2;
+      while (i < code.length && /\s/.test(code[i])) i++;
+    } else {
+      return null;
+    }
+  }
+
+  if (code[i] !== '{') return null;
+  const afterBody = skipBalanced(code, i);
+  if (afterBody < 0) return null;
+  const body = code.slice(i + 1, afterBody - 1);
+
+  // Whatever's left must be whitespace or a trailing semicolon only.
+  const rest = code.slice(afterBody).trim();
+  if (rest.length > 0 && rest !== ';') return null;
+
+  return body.trim();
+}
+
 export function extractCodeBlock(full: string): string {
   const fence = /```[a-zA-Z0-9_+-]*\n([\s\S]*?)```/;
   const match = full.match(fence);
-  let code = (match ? match[1] : full).trim();
+  const code = (match ? match[1] : full).trim();
 
-  // Unwrap: `function name(...) { body }` → body
-  const fnDecl = code.match(/^function\s+\w+\s*\([^)]*\)\s*\{([\s\S]*)\}\s*$/);
-  if (fnDecl) return fnDecl[1].trim();
-
-  // Unwrap: `const name = (...) => { body }` → body
-  const arrowBlock = code.match(
-    /^(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{([\s\S]*)\}\s*;?\s*$/,
-  );
-  if (arrowBlock) return arrowBlock[1].trim();
+  // JS function / arrow function unwrap (bracket-balanced)
+  const jsBody = unwrapJsFunction(code);
+  if (jsBody !== null) return jsBody;
 
   // Unwrap: `def name(...)[ -> T]:\n    body` → body (dedented)
   const pyDef = code.match(
