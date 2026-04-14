@@ -27,6 +27,7 @@ export function Inspector() {
   const appendBody = useGraphStore((s) => s.appendBlockBody);
   const resetBody = useGraphStore((s) => s.resetBlockBody);
   const deleteSelected = useGraphStore((s) => s.deleteSelected);
+  const duplicateBlock = useGraphStore((s) => s.duplicateBlock);
 
   const apiKey = useSettingsStore((s) => s.apiKey);
   const model = useSettingsStore((s) => s.model);
@@ -512,7 +513,10 @@ export function Inspector() {
         )}
 
         <div className="field">
-          <button className="danger" onClick={deleteSelected}>Delete block</button>
+          <div className="btn-group">
+            <button onClick={() => duplicateBlock(selected.id)}>Duplicate</button>
+            <button className="danger" onClick={deleteSelected}>Delete block</button>
+          </div>
         </div>
       </div>
     </aside>

@@ -158,6 +158,46 @@ try {
   const afterAdd = (await page.$$('.react-flow__node')).length;
   check('+ Add block adds a node', afterAdd === beforeAdd + 1, `${beforeAdd} → ${afterAdd}`);
 
+  // 7a. Duplicate block — selecting validate and clicking Duplicate makes
+  // a new "validate_copy" block and leaves the clone selected.
+  log('\n=== 7a. duplicate block ===');
+  // Re-select validate to make sure it's the active selection
+  const dupNodes = page.locator('.react-flow__node');
+  const dupCount = await dupNodes.count();
+  let validIdx = -1;
+  for (let i = 0; i < dupCount; i++) {
+    const val = await dupNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'validate') { validIdx = i; break; }
+  }
+  check('found validate before duplicate', validIdx >= 0);
+  if (validIdx >= 0) {
+    await dupNodes.nth(validIdx).locator('.fblock__body').click();
+    await page.waitForTimeout(200);
+    const before = (await page.$$('.react-flow__node')).length;
+    await page.getByRole('button', { name: 'Duplicate' }).click();
+    await page.waitForTimeout(200);
+    const after = (await page.$$('.react-flow__node')).length;
+    check('duplicate adds a new node', after === before + 1, `${before} → ${after}`);
+    const hasCopy = (await page.locator('.react-flow__node:has-text("validate_copy")').count()) >= 1;
+    check('clone is named validate_copy', hasCopy);
+    const inspectorHead = await page.locator('.inspector__title').textContent();
+    check('clone becomes the active selection', inspectorHead === 'validate_copy', `title: ${inspectorHead}`);
+    // Delete the clone so subsequent sections see the original count.
+    await page.getByRole('button', { name: 'Delete block' }).click();
+    await page.waitForTimeout(200);
+    // Re-select validate so the next check has an inspector to interact with.
+    const postDupNodes = page.locator('.react-flow__node');
+    const postDupCount = await postDupNodes.count();
+    for (let i = 0; i < postDupCount; i++) {
+      const val = await postDupNodes.nth(i).locator('.fblock__name').first().textContent();
+      if (val?.trim() === 'validate') {
+        await postDupNodes.nth(i).locator('.fblock__body').click();
+        break;
+      }
+    }
+    await page.waitForTimeout(200);
+  }
+
   // 7b. Delete/Backspace in an inspector textarea must not delete the block
   log('\n=== 7b. delete-key in textarea does not delete block ===');
   const beforeKey = (await page.$$('.react-flow__node')).length;

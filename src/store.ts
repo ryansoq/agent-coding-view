@@ -25,6 +25,7 @@ interface GraphState {
 
   addBlock: (at?: { x: number; y: number }) => void;
   deleteSelected: () => void;
+  duplicateBlock: (id: string) => void;
   patchBlock: (id: string, patch: Partial<FunctionBlockData>) => void;
   appendBlockBody: (id: string, delta: string) => void;
   resetBlockBody: (id: string) => void;
@@ -158,6 +159,30 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         data,
       };
       return { nodes: [...state.nodes, node] };
+    }),
+
+  duplicateBlock: (id) =>
+    set((state) => {
+      const source = state.nodes.find((n) => n.id === id);
+      if (!source) return state;
+      const newId = nextId();
+      const clone: FBlockNode = {
+        id: newId,
+        type: 'fblock',
+        position: { x: source.position.x + 40, y: source.position.y + 40 },
+        data: {
+          // Deep-copy to avoid sharing arrays (scope) or object refs (testCounts).
+          ...source.data,
+          scope: [...source.data.scope],
+          testCounts: source.data.testCounts ? { ...source.data.testCounts } : undefined,
+          name: `${source.data.name}_copy`,
+        },
+        selected: true,
+      };
+      // Deselect everything else so the newly-created clone is the focused block.
+      const nodes = state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n));
+      nodes.push(clone);
+      return { nodes };
     }),
 
   deleteSelected: () =>
