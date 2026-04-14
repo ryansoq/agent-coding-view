@@ -360,6 +360,72 @@ try {
     check('warm pyodide run finishes in <800ms', t1Elapsed < 800, `${t1Elapsed}ms`);
   }
 
+  // 9a. Sandbox stdout capture — write a body that calls console.log,
+  // run the tests, verify the captured Output panel shows up.
+  log('\n=== 9a. sandbox stdout capture ===');
+  // Find validate again and patch its body to print before returning
+  const stdNodes = page.locator('.react-flow__node');
+  const stdCount = await stdNodes.count();
+  let stdValidIdx = -1;
+  for (let i = 0; i < stdCount; i++) {
+    const val = await stdNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'validate') { stdValidIdx = i; break; }
+  }
+  if (stdValidIdx >= 0) {
+    await stdNodes.nth(stdValidIdx).locator('.fblock__body').click();
+    await page.waitForTimeout(150);
+    // Re-fill tests with one that calls validate so its body runs
+    const stdTests = page.locator('.inspector textarea').first();
+    await stdTests.fill(
+      `test('logs go through', () => { expect(validate('hello')).toBe('hello'); });`,
+    );
+    // Now inject a print into the body. The body is a <pre>, not editable —
+    // we can patch via the store by triggering a regenerate? No — simpler,
+    // load a graph file with the body we want.
+  }
+  // Use the file loader to inject a graph with a console.log in the body
+  const stdoutGraph = JSON.stringify({
+    version: 1,
+    nodes: [
+      {
+        id: 'b1',
+        position: { x: 100, y: 100 },
+        data: {
+          name: 'noisy',
+          signature: '(s) => string',
+          mode: 'TDD',
+          spec: '',
+          tests: `test('runs', () => { expect(noisy('hi')).toBe('hi'); });`,
+          scope: [],
+          body: `console.log('debug', s);\nconsole.warn('warning here');\nreturn s;`,
+          status: 'specd',
+          language: 'javascript',
+        },
+      },
+    ],
+    edges: [],
+  });
+  const fs2 = await import('node:fs/promises');
+  const os2 = await import('node:os');
+  const pathMod2 = await import('node:path');
+  const stdoutTmp = pathMod2.join(os2.tmpdir(), `e2e-stdout-${Date.now()}.json`);
+  await fs2.writeFile(stdoutTmp, stdoutGraph);
+  await page.locator('input[type="file"]').setInputFiles(stdoutTmp);
+  await page.waitForTimeout(300);
+  // Click the only block
+  await page.locator('.react-flow__node').first().locator('.fblock__body').click();
+  await page.waitForTimeout(200);
+  await page.getByRole('button', { name: 'Run tests' }).click();
+  await page.waitForSelector('.test-results__logs-body', { timeout: 5000 });
+  const logsText = await page.locator('.test-results__logs-body').textContent();
+  check('stdout panel contains debug log', logsText?.includes('debug hi') ?? false, `logs: "${logsText}"`);
+  check('stdout panel contains warn log', logsText?.includes('warning here') ?? false);
+  await fs2.unlink(stdoutTmp).catch(() => {});
+
+  // Restore seed graph for subsequent sections
+  await page.goto(vite.url, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.react-flow__node');
+
   // 9b. Cycle detection warning — drag-drop is fiddly in headless, so
   // inject a crafted cyclic graph via the file loader and verify the
   // Inspector shows the warning banner for a cycle member.

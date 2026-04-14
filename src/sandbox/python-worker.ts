@@ -91,6 +91,13 @@ interface WorkerRequest {
   tests: string;
 }
 
+function indentBlock(code: string, prefix: string): string {
+  return code
+    .split('\n')
+    .map((line) => (line.length > 0 ? prefix + line : line))
+    .join('\n');
+}
+
 let pyodidePromise: Promise<any> | null = null;
 // Track whether PY_RUNTIME has been executed against the current Pyodide
 // instance. Running it once is enough — test/expect/json live in the module
@@ -144,20 +151,28 @@ pyCtx.onmessage = async (e: MessageEvent) => {
       (indentedBody.trim() ? indentedBody : '    pass');
 
     // PY_RUNTIME was loaded once in getPyodide(); per-run scripts only need
-    // to reset results, define the user function, and run the tests.
+    // to reset results, capture stdout, define the user function, and run
+    // the tests. The try/finally restores stdout even if the user code
+    // raises at parse/eval time.
     const script =
+      'import sys, io\n' +
       '__results = []\n' +
-      defBlock +
-      '\n\n' +
-      tests +
-      '\n\n' +
-      '__results_json = json.dumps(__results)';
+      '__log_buf = io.StringIO()\n' +
+      '__old_stdout = sys.stdout\n' +
+      'sys.stdout = __log_buf\n' +
+      'try:\n' +
+      indentBlock(defBlock + '\n' + tests, '    ') +
+      '\nfinally:\n' +
+      '    sys.stdout = __old_stdout\n' +
+      '__results_json = json.dumps(__results)\n' +
+      '__logs_json = json.dumps([l for l in __log_buf.getvalue().split(\'\\n\') if l])';
 
     await pyodide.runPythonAsync(script);
-    const json = pyodide.globals.get('__results_json');
-    const resultsStr = typeof json === 'string' ? json : String(json);
-    const results = JSON.parse(resultsStr);
-    pyCtx.postMessage({ id, result: { status: 'done', results } });
+    const resJson = pyodide.globals.get('__results_json');
+    const logsJson = pyodide.globals.get('__logs_json');
+    const results = JSON.parse(typeof resJson === 'string' ? resJson : String(resJson));
+    const logs = JSON.parse(typeof logsJson === 'string' ? logsJson : String(logsJson));
+    pyCtx.postMessage({ id, result: { status: 'done', results, logs } });
   } catch (err) {
     // Pyodide traceback lands here as a long multi-line string; the bottom few
     // lines are the actionable ones.

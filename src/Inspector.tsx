@@ -506,6 +506,16 @@ export function Inspector() {
                 </div>
               ))
             )}
+            {lastResult.logs && lastResult.logs.length > 0 && (
+              <div className="test-results__logs">
+                <div className="test-results__logs-header">
+                  Output ({lastResult.logs.length} line{lastResult.logs.length === 1 ? '' : 's'})
+                </div>
+                <pre className="test-results__logs-body">
+                  {lastResult.logs.join('\n')}
+                </pre>
+              </div>
+            )}
           </div>
         )}
 

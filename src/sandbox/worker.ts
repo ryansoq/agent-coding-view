@@ -30,12 +30,17 @@ ctx.onmessage = (e: MessageEvent) => {
     const paramList = params.join(', ');
     const userFn = `function ${functionName}(${paramList}) {\n${body}\n}`;
     const script =
-      JS_RUNTIME + '\n' + userFn + '\n' + tests + '\nreturn __results;';
+      JS_RUNTIME +
+      '\n' +
+      userFn +
+      '\n' +
+      tests +
+      '\nreturn { results: __results, logs: __logs };';
 
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
     const runner = new Function(script);
-    const results = runner();
-    ctx.postMessage({ status: 'done', results });
+    const out = runner();
+    ctx.postMessage({ status: 'done', results: out.results, logs: out.logs });
   } catch (err) {
     const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     ctx.postMessage({ status: 'error', error: msg });

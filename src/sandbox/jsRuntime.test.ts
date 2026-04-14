@@ -13,21 +13,31 @@ interface TestCase {
   error?: string;
 }
 
+type SandboxResult =
+  | { status: 'done'; results: TestCase[]; logs: string[] }
+  | { status: 'error'; error: string };
+
 function runInSandbox(opts: {
   name: string;
   signature: string;
   body: string;
   tests: string;
-}): { status: 'done'; results: TestCase[] } | { status: 'error'; error: string } {
+}): SandboxResult {
   const params = extractParams(opts.signature);
   const fnName = sanitizeName(opts.name);
   const userFn = `function ${fnName}(${params.join(', ')}) {\n${opts.body}\n}`;
   const script =
-    JS_RUNTIME + '\n' + userFn + '\n' + opts.tests + '\nreturn __results;';
+    JS_RUNTIME +
+    '\n' +
+    userFn +
+    '\n' +
+    opts.tests +
+    '\nreturn { results: __results, logs: __logs };';
   try {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
     const runner = new Function(script);
-    return { status: 'done', results: runner() as TestCase[] };
+    const out = runner() as { results: TestCase[]; logs: string[] };
+    return { status: 'done', results: out.results, logs: out.logs };
   } catch (err) {
     return { status: 'error', error: (err as Error).message };
   }
@@ -191,6 +201,64 @@ test('explicit', () => expect(mul(3, 4)).toBe(12));`,
     });
     if (r.status !== 'done') throw new Error('expected done');
     expect(r.results).toEqual([{ name: 'aliased', ok: true }]);
+  });
+
+  // --- console capture ---
+
+  it('captures console.log output from the body', () => {
+    const r = runInSandbox({
+      name: 'noisy',
+      signature: '(x)',
+      body: 'console.log("hello", x); return x;',
+      tests: `test('noisy', () => expect(noisy(42)).toBe(42));`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.results[0].ok).toBe(true);
+    expect(r.logs).toContain('hello 42');
+  });
+
+  it('captures multiple log calls in order', () => {
+    const r = runInSandbox({
+      name: 'fn',
+      signature: '()',
+      body: 'console.log("first"); console.log("second"); return 1;',
+      tests: `test('runs', () => fn());`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.logs).toEqual(['first', 'second']);
+  });
+
+  it('console.warn / .error / .info are also captured', () => {
+    const r = runInSandbox({
+      name: 'fn',
+      signature: '()',
+      body: 'console.warn("w"); console.error("e"); console.info("i"); return 1;',
+      tests: `test('runs', () => fn());`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.logs).toEqual(['w', 'e', 'i']);
+  });
+
+  it('captures objects via JSON serialisation', () => {
+    const r = runInSandbox({
+      name: 'fn',
+      signature: '()',
+      body: 'console.log("got", {a: 1, b: 2}); return 1;',
+      tests: `test('runs', () => fn());`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.logs[0]).toContain('{"a":1,"b":2}');
+  });
+
+  it('logs are empty when nothing was printed', () => {
+    const r = runInSandbox({
+      name: 'silent',
+      signature: '(x)',
+      body: 'return x * 2;',
+      tests: `test('silent', () => expect(silent(3)).toBe(6));`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.logs).toEqual([]);
   });
 
   // --- Edge cases uncovered during bug-hunt ---

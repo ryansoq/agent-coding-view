@@ -5,6 +5,27 @@
 
 export const JS_RUNTIME = `
 var __results = [];
+var __logs = [];
+// Replace the global console with a capturing shim. Uses var so the local
+// binding shadows the worker's global console for the duration of this
+// new Function() invocation.
+var console = {
+  log: function () {
+    var parts = [];
+    for (var i = 0; i < arguments.length; i++) {
+      var a = arguments[i];
+      try {
+        parts.push(typeof a === 'string' ? a : JSON.stringify(a));
+      } catch (_) {
+        parts.push(String(a));
+      }
+    }
+    __logs.push(parts.join(' '));
+  },
+};
+console.warn = console.log;
+console.error = console.log;
+console.info = console.log;
 function __deepEqual(a, b) {
   if (a === b) return true;
   if (a == null || b == null) return a === b;

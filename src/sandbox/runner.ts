@@ -5,8 +5,8 @@ export interface TestCase {
 }
 
 export type RunResult =
-  | { status: 'done'; results: TestCase[] }
-  | { status: 'error'; error: string };
+  | { status: 'done'; results: TestCase[]; logs?: string[] }
+  | { status: 'error'; error: string; logs?: string[] };
 
 export interface RunTestsInput {
   language: string;
