@@ -590,6 +590,57 @@ try {
   }
 
   await mockedPage.unroute('https://api.anthropic.com/**');
+
+  // 13. Stop button during generation — delayed mock so we have time to
+  // click Stop, then verify the block doesn't get stuck in 'generating'.
+  log('\n=== 13. Stop during slow generation resets status ===');
+  let stopIntercepted = 0;
+  await mockedPage.route('https://api.anthropic.com/**', async (route) => {
+    stopIntercepted++;
+    // Hold the response for 4s. If the browser aborts first, the fulfill
+    // never lands — that's fine, Playwright handles the abort cleanly.
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        headers: { 'cache-control': 'no-cache' },
+        body: buildSse('return 999;'),
+      });
+    } catch {
+      // ignore — the fetch was aborted
+    }
+  });
+
+  // Select parseInput (SDD seed, no body yet)
+  const stopNodes = mockedPage.locator('.react-flow__node');
+  const stopCount = await stopNodes.count();
+  let stopIdx = -1;
+  for (let i = 0; i < stopCount; i++) {
+    const val = await stopNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'parseInput') { stopIdx = i; break; }
+  }
+  if (stopIdx >= 0) {
+    await stopNodes.nth(stopIdx).locator('.fblock__body').click();
+    await mockedPage.waitForTimeout(200);
+    // Click Generate (parseInput already has a body from section 11, so it
+    // says 'Regenerate' now).
+    await mockedPage.locator('.inspector button.primary').first().click();
+    // Wait for the block to enter generating state
+    await mockedPage.waitForSelector('.fblock.status-generating', { timeout: 2000 });
+    // Click Stop (the same .primary button becomes "Stop" while busy)
+    await mockedPage.waitForTimeout(300);
+    await mockedPage.locator('.inspector button.primary').first().click();
+    await mockedPage.waitForTimeout(500);
+    // The block's card should NO LONGER have status-generating
+    const stillGenerating = await mockedPage.locator('.fblock.status-generating').count();
+    check('block exits generating state after Stop', stillGenerating === 0, `saw ${stillGenerating}`);
+    // And no error banner — Stop is intentional, not an error
+    const errBanner = await mockedPage.locator('.error-banner').count();
+    check('no error banner after Stop', errBanner === 0, `${errBanner} banners`);
+  }
+
+  await mockedPage.unroute('https://api.anthropic.com/**');
   await mockedPage.close();
 
   log('\n=== console/page errors during run ===');

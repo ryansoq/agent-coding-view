@@ -304,8 +304,12 @@ export function Inspector() {
     genAbort.current = null;
     testHandle.current?.abort();
     testHandle.current = null;
-    // Status is reset inside the respective catch/after-await branches, not here —
-    // different paths have different "what to reset to" semantics.
+    // The direct SDD/manual Generate path has no await branch to catch aborts —
+    // generateBody swallows post-abort callbacks in llm.ts to avoid spurious
+    // error banners. Reset status here so the block doesn't stay stuck in
+    // 'generating' or 'running_tests' forever. Auto TDD / Run tests have
+    // their own in-flight handlers that can override this later if needed.
+    if (selected) patch(selected.id, { status: 'stub' });
   };
 
   return (
