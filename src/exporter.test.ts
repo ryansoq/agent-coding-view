@@ -131,6 +131,55 @@ describe('exportToPython', () => {
   });
 });
 
+describe('exportToJs runnability', () => {
+  it('produces valid JavaScript that new Function() can parse', () => {
+    const a = node('double', {
+      name: 'double',
+      signature: '(x) => number',
+      body: 'return x * 2;',
+    });
+    const out = exportToJs([a]);
+    // Prepend header stripping logic: header is just comments, fine to eval.
+    expect(() => new Function(out)).not.toThrow();
+  });
+
+  it('functions can call each other when emitted in topological order', () => {
+    const a = node('double', {
+      name: 'double',
+      signature: '(x) => number',
+      body: 'return x * 2;',
+    });
+    const b = node('quadruple', {
+      name: 'quadruple',
+      signature: '(x) => number',
+      body: 'return double(double(x));',
+    });
+    const sorted = topoSort([a, b], [edge('a', 'b')]);
+    const out = exportToJs(sorted);
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+    const run = new Function(`${out}\nreturn quadruple(3);`);
+    expect(run()).toBe(12);
+  });
+
+  it('stub body still parses as JS', () => {
+    const a = node('stub', { name: 'stub', signature: '(x)', body: '' });
+    const out = exportToJs([a]);
+    expect(() => new Function(out)).not.toThrow();
+  });
+
+  it('multi-statement body preserves statements', () => {
+    const a = node('compute', {
+      name: 'compute',
+      signature: '(x, y)',
+      body: 'const sum = x + y;\nconst prod = x * y;\nreturn sum + prod;',
+    });
+    const out = exportToJs([a]);
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+    const run = new Function(`${out}\nreturn compute(3, 4);`);
+    expect(run()).toBe(3 + 4 + 3 * 4);
+  });
+});
+
 describe('exportGraph dispatch', () => {
   it('filters by effective language', () => {
     const nodes = [
