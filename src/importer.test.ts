@@ -72,6 +72,43 @@ function kept(x) { return x; }`;
     expect(fns).toHaveLength(1);
     expect(fns[0].name).toBe('kept');
   });
+
+  // --- Edge cases probed during bug hunt ---
+
+  it('parses async functions', () => {
+    const src = `async function fetchUser(id) { return await db.get(id); }`;
+    const fns = findJsFunctions(src);
+    expect(fns).toHaveLength(1);
+    expect(fns[0].name).toBe('fetchUser');
+    expect(fns[0].params).toBe('id');
+  });
+
+  it('parses generator functions', () => {
+    const src = `function* range(n) { for (let i = 0; i < n; i++) yield i; }`;
+    const fns = findJsFunctions(src);
+    expect(fns).toHaveLength(1);
+    expect(fns[0].name).toBe('range');
+  });
+
+  it('parses functions with default parameters', () => {
+    const src = `function add(a, b = 0) { return a + b; }`;
+    const fns = findJsFunctions(src);
+    expect(fns).toHaveLength(1);
+    expect(fns[0].params).toBe('a, b = 0');
+  });
+
+  it('parses functions with destructured params', () => {
+    const src = `function take({ a, b }) { return a + b; }`;
+    const fns = findJsFunctions(src);
+    expect(fns).toHaveLength(1);
+    expect(fns[0].params).toBe('{ a, b }');
+  });
+
+  it('does NOT pick up arrow functions assigned to const', () => {
+    // MVP behaviour: only `function NAME` declarations are parsed.
+    const src = `const foo = (x) => x + 1;`;
+    expect(findJsFunctions(src)).toEqual([]);
+  });
 });
 
 describe('importJs', () => {

@@ -92,7 +92,10 @@ export function findJsFunctions(source: string): ParsedFunction[] {
       continue;
     }
 
-    // Match `function` as a whole token
+    // Match `function` as a whole token. `function*` (generator) is the
+    // one place where the next char after `function` is allowed to be
+    // a non-whitespace non-identifier char, so we can't simply require
+    // `!isIdentChar(source[i + 8])` and bail.
     if (
       ch === 'f' &&
       source.slice(i, i + 8) === 'function' &&
@@ -101,6 +104,11 @@ export function findJsFunctions(source: string): ParsedFunction[] {
     ) {
       let j = i + 8;
       while (j < source.length && /\s/.test(source[j])) j++;
+      // Skip optional `*` for generator functions.
+      if (source[j] === '*') {
+        j++;
+        while (j < source.length && /\s/.test(source[j])) j++;
+      }
       let name = '';
       while (j < source.length && isIdentChar(source[j])) {
         name += source[j];
