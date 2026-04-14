@@ -40,6 +40,19 @@ let browser;
 let failures = 0;
 const errors = [];
 
+// Console errors Chromium emits for things we're deliberately triggering
+// (mocked 4xx/5xx responses). These are browser-level logs, not app bugs.
+const IGNORED_CONSOLE = [
+  /Failed to load resource.*401/,
+  /Failed to load resource.*500/,
+  /Failed to load resource.*4\d\d/,
+  /Failed to load resource.*5\d\d/,
+];
+
+function isIgnoredConsoleError(text) {
+  return IGNORED_CONSOLE.some((re) => re.test(text));
+}
+
 function check(label, cond, detail) {
   if (cond) log(`  ✓ ${label}`);
   else {
@@ -59,7 +72,9 @@ try {
 
   page.on('pageerror', (e) => { errors.push(`pageerror: ${e.message}`); });
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`);
+    if (m.type() === 'error' && !isIgnoredConsoleError(m.text())) {
+      errors.push(`console.error: ${m.text()}`);
+    }
   });
 
   log('loading app…');
@@ -157,6 +172,13 @@ try {
   await page.waitForTimeout(200);
   const afterAdd = (await page.$$('.react-flow__node')).length;
   check('+ Add block adds a node', afterAdd === beforeAdd + 1, `${beforeAdd} → ${afterAdd}`);
+  // addBlock uses a random position — in rare runs the new block lands
+  // on top of py_slug and blocks later clicks. The newly-added block is
+  // auto-selected, so Delete clears it and restores deterministic layout.
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.waitForTimeout(150);
+  const afterCleanup = (await page.$$('.react-flow__node')).length;
+  check('new block cleaned up after add test', afterCleanup === beforeAdd, `${afterCleanup} nodes`);
 
   // 7a. Duplicate block — selecting validate and clicking Duplicate makes
   // a new "validate_copy" block and leaves the clone selected.
@@ -375,7 +397,9 @@ try {
   });
   mockedPage.on('pageerror', (e) => errors.push(`mocked pageerror: ${e.message}`));
   mockedPage.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`mocked console.error: ${m.text()}`);
+    if (m.type() === 'error' && !isIgnoredConsoleError(m.text())) {
+      errors.push(`mocked console.error: ${m.text()}`);
+    }
   });
 
   // Canned SSE body that the Anthropic TypeScript SDK's streaming parser
@@ -638,6 +662,53 @@ try {
     // And no error banner — Stop is intentional, not an error
     const errBanner = await mockedPage.locator('.error-banner').count();
     check('no error banner after Stop', errBanner === 0, `${errBanner} banners`);
+  }
+
+  await mockedPage.unroute('https://api.anthropic.com/**');
+
+  // 14. API error path — 401 from Anthropic should land in the error
+  // banner, not crash the app. Verifies the SDK's typed exceptions
+  // propagate through generateBody → onError → setError.
+  log('\n=== 14. API 401 lands in error banner ===');
+  await mockedPage.route('https://api.anthropic.com/**', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'error',
+        error: {
+          type: 'authentication_error',
+          message: 'invalid x-api-key',
+        },
+      }),
+    });
+  });
+  const errNodes = mockedPage.locator('.react-flow__node');
+  const errCount = await errNodes.count();
+  let errIdx = -1;
+  for (let i = 0; i < errCount; i++) {
+    const val = await errNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'parseInput') { errIdx = i; break; }
+  }
+  if (errIdx >= 0) {
+    await errNodes.nth(errIdx).locator('.fblock__body').click();
+    await mockedPage.waitForTimeout(200);
+    const priorBanner = await mockedPage.locator('.error-banner .link-btn').count();
+    if (priorBanner) await mockedPage.locator('.error-banner .link-btn').first().click();
+    await mockedPage.locator('.inspector button.primary').first().click();
+    try {
+      await mockedPage.waitForSelector('.error-banner', { timeout: 6000 });
+      const banner = (await mockedPage.locator('.error-banner').textContent()) || '';
+      check(
+        'error banner appears on 401',
+        banner.toLowerCase().includes('401') || banner.toLowerCase().includes('auth'),
+        `banner: "${banner.trim().slice(0, 120)}"`,
+      );
+    } catch {
+      check('error banner appears on 401', false, 'timeout waiting for banner');
+    }
+    const stuck = await mockedPage.locator('.fblock.status-generating').count();
+    check('block exits generating on 401', stuck === 0, `${stuck} still generating`);
   }
 
   await mockedPage.unroute('https://api.anthropic.com/**');

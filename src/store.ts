@@ -157,8 +157,14 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         type: 'fblock',
         position: at ?? { x: 200 + Math.random() * 300, y: 200 + Math.random() * 200 },
         data,
+        selected: true,
       };
-      return { nodes: [...state.nodes, node] };
+      // Deselect everything else so the new block is the focused one —
+      // same pattern as duplicateBlock so Delete/Inspector operate on the
+      // newly-created block without an extra click.
+      const nodes = state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n));
+      nodes.push(node);
+      return { nodes };
     }),
 
   duplicateBlock: (id) =>
