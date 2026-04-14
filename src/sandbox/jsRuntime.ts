@@ -10,6 +10,13 @@ function __deepEqual(a, b) {
   if (a == null || b == null) return a === b;
   if (typeof a !== typeof b) return false;
   if (typeof a !== 'object') return a !== a && b !== b; // NaN
+  // Special-case builtins whose equality isn't captured by own enumerable keys.
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  }
+  if (a instanceof RegExp || b instanceof RegExp) {
+    return a instanceof RegExp && b instanceof RegExp && a.source === b.source && a.flags === b.flags;
+  }
   if (Array.isArray(a) !== Array.isArray(b)) return false;
   if (Array.isArray(a)) {
     if (a.length !== b.length) return false;

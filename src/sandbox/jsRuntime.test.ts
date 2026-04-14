@@ -192,4 +192,61 @@ test('explicit', () => expect(mul(3, 4)).toBe(12));`,
     if (r.status !== 'done') throw new Error('expected done');
     expect(r.results).toEqual([{ name: 'aliased', ok: true }]);
   });
+
+  // --- Edge cases uncovered during bug-hunt ---
+
+  it('deepEqual: two identical Dates are equal', () => {
+    const r = runInSandbox({
+      name: 'makeDate',
+      signature: '() => Date',
+      body: `return new Date('2020-01-01');`,
+      tests: `test('same', () => expect(makeDate()).toEqual(new Date('2020-01-01')));`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.results[0].ok).toBe(true);
+  });
+
+  it('deepEqual: two different Dates are NOT equal', () => {
+    const r = runInSandbox({
+      name: 'makeDate',
+      signature: '() => Date',
+      body: `return new Date('2020-01-01');`,
+      tests: `test('diff', () => expect(makeDate()).toEqual(new Date('2021-06-15')));`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.results[0].ok).toBe(false);
+  });
+
+  it('deepEqual: two identical RegExps are equal', () => {
+    const r = runInSandbox({
+      name: 'makeRe',
+      signature: '() => RegExp',
+      body: `return /foo/gi;`,
+      tests: `test('same', () => expect(makeRe()).toEqual(/foo/gi));`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.results[0].ok).toBe(true);
+  });
+
+  it('deepEqual: RegExps with different flags are NOT equal', () => {
+    const r = runInSandbox({
+      name: 'makeRe',
+      signature: '() => RegExp',
+      body: `return /foo/g;`,
+      tests: `test('diff flags', () => expect(makeRe()).toEqual(/foo/i));`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.results[0].ok).toBe(false);
+  });
+
+  it('deepEqual: RegExps with different sources are NOT equal', () => {
+    const r = runInSandbox({
+      name: 'makeRe',
+      signature: '() => RegExp',
+      body: `return /foo/;`,
+      tests: `test('diff source', () => expect(makeRe()).toEqual(/bar/));`,
+    });
+    if (r.status !== 'done') throw new Error('expected done');
+    expect(r.results[0].ok).toBe(false);
+  });
 });
