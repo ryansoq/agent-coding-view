@@ -128,6 +128,10 @@ function Canvas() {
             nodeTypes={nodeTypes}
             fitView
             deleteKeyCode={['Delete', 'Backspace']}
+            // Accept Shift/Ctrl/Meta as multi-select modifiers — the React
+            // Flow default is Meta on Mac and Control elsewhere, which
+            // surprises people used to Shift from Figma/VSCode.
+            multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
           >
             <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#2a3244" />
             <Controls position="bottom-left" />

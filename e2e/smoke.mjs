@@ -180,6 +180,37 @@ try {
   const afterCleanup = (await page.$$('.react-flow__node')).length;
   check('new block cleaned up after add test', afterCleanup === beforeAdd, `${afterCleanup} nodes`);
 
+  // 7d. Multi-select delete — shift-click two nodes and Delete should
+  // remove both plus any edges between them, Undo should bring them back.
+  log('\n=== 7d. multi-select delete ===');
+  const msBefore = (await page.$$('.react-flow__node')).length;
+  const msEdgesBefore = (await page.$$('.react-flow__edge')).length;
+  const msNodes = page.locator('.react-flow__node');
+  // Click the first block normally, shift-click the second to add it.
+  await msNodes.nth(0).locator('.fblock__body').click();
+  await page.waitForTimeout(100);
+  await msNodes.nth(1).locator('.fblock__body').click({ modifiers: ['Shift'] });
+  await page.waitForTimeout(150);
+  const msSelectedCount = await page.locator('.react-flow__node.selected').count();
+  check('two nodes selected after shift-click', msSelectedCount === 2, `got ${msSelectedCount}`);
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.waitForTimeout(150);
+  const msAfter = (await page.$$('.react-flow__node')).length;
+  const msEdgesAfter = (await page.$$('.react-flow__edge')).length;
+  check('multi-select delete removes both', msAfter === msBefore - 2, `${msBefore} → ${msAfter}`);
+  // The two seed blocks we deleted (parseInput, validate) had an edge
+  // between them, plus parseInput→enrich. The first is orphaned by
+  // deleting parseInput; the second is orphaned by deleting validate's
+  // upstream. Assert at least some edges got cleaned.
+  check('orphaned edges removed', msEdgesAfter < msEdgesBefore, `${msEdgesBefore} → ${msEdgesAfter}`);
+  // Undo — both nodes AND their edges should come back.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(150);
+  const msUndoNodes = (await page.$$('.react-flow__node')).length;
+  const msUndoEdges = (await page.$$('.react-flow__edge')).length;
+  check('undo restores node count', msUndoNodes === msBefore, `${msBefore} vs ${msUndoNodes}`);
+  check('undo restores edge count', msUndoEdges === msEdgesBefore, `${msEdgesBefore} vs ${msUndoEdges}`);
+
   // 7c. Undo/redo for structural ops — add a block, undo, assert it's gone;
   // redo, assert it's back.
   log('\n=== 7c. undo/redo ===');
