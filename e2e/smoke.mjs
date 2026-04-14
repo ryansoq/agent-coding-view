@@ -234,6 +234,37 @@ try {
     check('warm pyodide run finishes in <800ms', t1Elapsed < 800, `${t1Elapsed}ms`);
   }
 
+  // 10. Save / Load JSON round-trip
+  log('\n=== 10. save/load JSON round-trip ===');
+  try {
+    const beforeNodes = (await page.$$('.react-flow__node')).length;
+    const beforeEdges = (await page.$$('.react-flow__edge')).length;
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 5000 }),
+      page.getByRole('button', { name: 'Save JSON' }).click(),
+    ]);
+    const savedPath = await download.path();
+    check('download triggered', !!savedPath);
+
+    await page.getByRole('button', { name: 'Clear' }).click();
+    await page.waitForTimeout(200);
+    const afterClearNodes = (await page.$$('.react-flow__node')).length;
+    check('clear removes all nodes', afterClearNodes === 0, `${afterClearNodes} nodes left`);
+
+    if (savedPath) {
+      await page.locator('input[type="file"]').setInputFiles(savedPath);
+      await page.waitForTimeout(300);
+      const loadedNodes = (await page.$$('.react-flow__node')).length;
+      const loadedEdges = (await page.$$('.react-flow__edge')).length;
+      check('loaded nodes match saved count', loadedNodes === beforeNodes, `${beforeNodes} → ${loadedNodes}`);
+      check('loaded edges match saved count', loadedEdges === beforeEdges, `${beforeEdges} → ${loadedEdges}`);
+    }
+  } catch (err) {
+    log(`  ✗ save/load failed: ${(err && err.message) || err}`);
+    failures++;
+  }
+
   log('\n=== console/page errors during run ===');
   if (errors.length === 0) {
     log('  ✓ no console or page errors');
