@@ -4,11 +4,10 @@ import { useSettingsStore } from './settingsStore';
 import { DevMode, FunctionBlockData } from './types';
 import { generateBody, generateBodyAsync } from './llm';
 import { LANGUAGES, labelFor } from './languages';
-import { runTests, RunResult, RunHandle } from './sandbox/runner';
+import { runTests, isLanguageSandboxed, RunResult, RunHandle } from './sandbox/runner';
 
 const MODES: DevMode[] = ['SDD', 'TDD', 'manual'];
 const MAX_TDD_ITERATIONS = 5;
-const JS_LANGS = new Set(['typescript', 'javascript']);
 const ITERATION_INFO_CLEAR_MS = 4000;
 
 /**
@@ -105,7 +104,7 @@ export function Inspector() {
   const isRunningTests = d.status === 'running_tests';
   const isBusy = isGenerating || isRunningTests;
   const effectiveLanguage = d.language || defaultLanguage;
-  const canRunTests = JS_LANGS.has(effectiveLanguage);
+  const canRunTests = isLanguageSandboxed(effectiveLanguage);
 
   const onGenerate = () => {
     setError(null);
@@ -154,6 +153,7 @@ export function Inspector() {
     patch(selected.id, { status: 'running_tests' });
 
     const run = runTests({
+      language: effectiveLanguage,
       functionName: live.name,
       signature: live.signature,
       body: live.body,
@@ -238,6 +238,7 @@ export function Inspector() {
       setIterationInfo(`Auto TDD iteration ${i + 1}/${MAX_TDD_ITERATIONS} — running tests…`);
 
       const run = runTests({
+        language: effectiveLanguage,
         functionName: live.name,
         signature: live.signature,
         body,
@@ -411,14 +412,14 @@ export function Inspector() {
                       <button
                         onClick={onRunTests}
                         disabled={!d.body || !d.tests || !canRunTests}
-                        title={!canRunTests ? 'Sandbox supports JS/TS only (P3)' : 'Run tests against current body'}
+                        title={!canRunTests ? 'Sandbox supports JS/TS/Python only' : 'Run tests against current body'}
                       >
                         Run tests
                       </button>
                       <button
                         onClick={onAutoTDD}
                         disabled={!d.tests || !canRunTests}
-                        title={!canRunTests ? 'Sandbox supports JS/TS only (P3)' : 'Generate → test → iterate until green'}
+                        title={!canRunTests ? 'Sandbox supports JS/TS/Python only' : 'Generate → test → iterate until green'}
                       >
                         Auto TDD
                       </button>

@@ -70,7 +70,7 @@ try {
   await page.waitForSelector('.react-flow__node', { timeout: 10000 });
   const nodeCount = (await page.$$('.react-flow__node')).length;
   check('canvas mounts', nodeCount > 0, `saw ${nodeCount} nodes`);
-  check('exactly 3 seed blocks', nodeCount === 3, `got ${nodeCount}`);
+  check('exactly 4 seed blocks', nodeCount === 4, `got ${nodeCount}`);
   check('toolbar title visible', !!(await page.getByText('Agent Coding View').first()));
   check('empty inspector message', !!(await page.getByText('No block selected').count()));
 
@@ -148,6 +148,17 @@ try {
   const afterAdd = (await page.$$('.react-flow__node')).length;
   check('+ Add block adds a node', afterAdd === beforeAdd + 1, `${beforeAdd} → ${afterAdd}`);
 
+  // 7b. Delete/Backspace in an inspector textarea must not delete the block
+  log('\n=== 7b. delete-key in textarea does not delete block ===');
+  const beforeKey = (await page.$$('.react-flow__node')).length;
+  const scopeBox = page.locator('.inspector textarea').last(); // scope textarea
+  await scopeBox.click();
+  await scopeBox.press('Backspace');
+  await scopeBox.press('Delete');
+  await page.waitForTimeout(200);
+  const afterKey = (await page.$$('.react-flow__node')).length;
+  check('textarea keystrokes do not delete node', afterKey === beforeKey, `${beforeKey} → ${afterKey}`);
+
   // 8. Double-click name enters edit mode
   log('\n=== 8. double-click name to edit ===');
   const anyNode = page.locator('.react-flow__node').first();
@@ -155,6 +166,61 @@ try {
   await page.waitForTimeout(200);
   const editInputs = await anyNode.locator('input.fblock__name').count();
   check('double-click opens input', editInputs === 1);
+  // Click elsewhere to exit edit mode so later steps aren't affected.
+  await page.locator('.canvas').click({ position: { x: 10, y: 10 } });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+
+  // 9. Python TDD sandbox — Pyodide first load, then run seed tests
+  log('\n=== 9. python TDD sandbox (first load is slow: ~15-30s) ===');
+  const rfNodes2 = page.locator('.react-flow__node');
+  const rfCount2 = await rfNodes2.count();
+  let pyIdx = -1;
+  for (let i = 0; i < rfCount2; i++) {
+    const val = await rfNodes2.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'py_slug') { pyIdx = i; break; }
+  }
+  check('found py_slug block on canvas', pyIdx >= 0);
+  if (pyIdx >= 0) {
+    await rfNodes2.nth(pyIdx).locator('.fblock__body').click();
+    await page.waitForTimeout(300);
+    const pyTitle = await page.locator('.inspector__title').textContent();
+    check('inspector selects python block', pyTitle === 'py_slug');
+
+    // Clear any stale results from earlier sections.
+    const prevResults = page.locator('.test-results');
+    if (await prevResults.count()) {
+      // The result panel is scoped per-block via the useEffect reset-on-select, so it's gone.
+    }
+
+    const t0py = Date.now();
+    await page.getByRole('button', { name: 'Run tests' }).click();
+    // First Pyodide load downloads ~10MB from CDN + initialises. Generous timeout.
+    await page.waitForSelector('.test-results .test-result', { timeout: 60000 });
+    const pyElapsed = Date.now() - t0py;
+    log(`  (pyodide first run took ${pyElapsed}ms)`);
+
+    const pyPass = await page.locator('.test-result.pass').count();
+    const pyFail = await page.locator('.test-result.fail').count();
+    if (pyPass !== 4 || pyFail !== 0) {
+      const rows = await page.locator('.test-result').allTextContents();
+      log('  DEBUG python rows:');
+      for (const r of rows) log('    ' + r.replace(/\n/g, ' | '));
+    }
+    // The seed block's body should pass all 4 tests.
+    check('all 4 python tests pass', pyPass === 4 && pyFail === 0, `${pyPass} pass / ${pyFail} fail`);
+
+    const pyPassingBlock = await page.locator('.fblock.status-passing').count();
+    check('py_slug block gets status-passing class', pyPassingBlock >= 1);
+
+    // Second run should reuse the warm worker and be much faster.
+    const t1py = Date.now();
+    await page.getByRole('button', { name: 'Run tests' }).click();
+    await page.waitForTimeout(1500);
+    const t1Elapsed = Date.now() - t1py;
+    log(`  (pyodide warm run took ${t1Elapsed}ms)`);
+    check('warm pyodide run finishes in <3s', t1Elapsed < 3000, `${t1Elapsed}ms`);
+  }
 
   log('\n=== console/page errors during run ===');
   if (errors.length === 0) {

@@ -88,6 +88,28 @@ return trimmed;`,
       status: 'stub',
     },
   },
+  {
+    id: nextId(),
+    type: 'fblock',
+    position: { x: 80, y: 360 },
+    data: {
+      ...defaultBlockData('py_slug'),
+      signature: 'def py_slug(s: str) -> str',
+      mode: 'TDD',
+      language: 'python',
+      tests: `test('lowercases', lambda: expect(py_slug('Hello')).toBe('hello'))
+test('replaces spaces with dashes', lambda: expect(py_slug('hi there')).toBe('hi-there'))
+test('strips non-alnum', lambda: expect(py_slug('a!b@c#')).toBe('abc'))
+test('rejects empty', lambda: expect(lambda: py_slug('')).toThrow('empty'))`,
+      body: `import re
+if not s:
+    raise ValueError('empty')
+lowered = s.lower().strip()
+spaced = re.sub(r'\\s+', '-', lowered)
+return re.sub(r'[^a-z0-9-]', '', spaced)`,
+      status: 'specd',
+    },
+  },
 ];
 
 const seedEdges: Edge[] = [
@@ -108,7 +130,19 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set((state) => ({ edges: applyEdgeChanges(changes, state.edges) })),
 
   onConnect: (conn) =>
-    set((state) => ({ edges: addEdge({ ...conn, id: nextEdgeId() }, state.edges) })),
+    set((state) => {
+      // Skip self-loops — a block calling itself via the graph surface isn't
+      // representable in our neighbor model anyway.
+      if (conn.source && conn.source === conn.target) return state;
+      // Dedupe: React Flow will happily add a second edge between the same
+      // source/target, which then shows up twice in the neighbors list and
+      // confuses the LLM prompt.
+      const exists = state.edges.some(
+        (e) => e.source === conn.source && e.target === conn.target,
+      );
+      if (exists) return state;
+      return { edges: addEdge({ ...conn, id: nextEdgeId() }, state.edges) };
+    }),
 
   addBlock: (at) =>
     set((state) => {
@@ -195,19 +229,28 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       },
     }));
 
+    // Drop edges whose endpoints don't exist in the loaded node set and drop
+    // self-loops — both are normally impossible but can creep in from hand-
+    // edited save files or old versions of the schema.
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const edges = parsed.edges.filter(
+      (e) =>
+        e.source !== e.target && nodeIds.has(e.source) && nodeIds.has(e.target),
+    );
+
     const maxNodeId = nodes
       .map((n) => Number(n.id.replace(/^b/, '')))
       .filter((n) => !Number.isNaN(n))
       .reduce((a, b) => Math.max(a, b), 0);
     idCounter = maxNodeId + 1;
 
-    const maxEdgeId = parsed.edges
+    const maxEdgeId = edges
       .map((e) => Number(e.id.replace(/^e/, '')))
       .filter((n) => !Number.isNaN(n))
       .reduce((a, b) => Math.max(a, b), 0);
     edgeCounter = maxEdgeId + 1;
 
-    set({ nodes, edges: parsed.edges });
+    set({ nodes, edges });
   },
 
   reset: () => set({ nodes: [], edges: [] }),

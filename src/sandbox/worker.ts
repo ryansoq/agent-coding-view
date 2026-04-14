@@ -3,6 +3,11 @@
 // runs the user's tests against it using a minimal test/expect runtime, and
 // posts back { status: 'done', results } or { status: 'error', error }.
 
+// This file is a module (export below) so TypeScript keeps its top-level
+// identifiers in file scope instead of leaking them into the global namespace
+// — matters because python-worker.ts also declares `ctx`.
+export {};
+
 const RUNTIME = `
 var __results = [];
 function __deepEqual(a, b) {

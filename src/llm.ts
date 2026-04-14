@@ -92,6 +92,17 @@ function buildUserPrompt(input: GenerateInput): string {
   return parts.join('\n');
 }
 
+function dedent(text: string): string {
+  const lines = text.split('\n');
+  const indents = lines
+    .filter((l) => l.trim().length > 0)
+    .map((l) => l.match(/^[ \t]*/)?.[0].length ?? 0);
+  if (indents.length === 0) return text;
+  const minIndent = Math.min(...indents);
+  if (minIndent === 0) return text;
+  return lines.map((l) => l.slice(minIndent)).join('\n');
+}
+
 function extractCodeBlock(full: string): string {
   const fence = /```[a-zA-Z0-9_+-]*\n([\s\S]*?)```/;
   const match = full.match(fence);
@@ -106,6 +117,12 @@ function extractCodeBlock(full: string): string {
     /^(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{([\s\S]*)\}\s*;?\s*$/,
   );
   if (arrowBlock) return arrowBlock[1].trim();
+
+  // Unwrap: `def name(...)[ -> T]:\n    body` → body (dedented)
+  const pyDef = code.match(
+    /^(?:async\s+)?def\s+\w+\s*\([^)]*\)\s*(?:->\s*[^:\n]+)?\s*:\s*\n([\s\S]*)$/,
+  );
+  if (pyDef) return dedent(pyDef[1].trimEnd());
 
   return code;
 }
