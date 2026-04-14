@@ -1,0 +1,1 @@
+/ultraplan "我想設計一個面圖式的面板 可以拉來拉去 類似 function block 然後 AI 在這個 block 生成code也就是 function 的執行一目了然 且可以控制 agent 如何開發TDD或是SDD 範圍 在哪裡 有點像 graph 或是積木"

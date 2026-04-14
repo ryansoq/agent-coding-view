@@ -1,0 +1,178 @@
+// Smoke test — spawns `vite dev`, drives the app via Playwright/Chromium,
+// verifies the core user journey. Run with `npm run test:e2e`.
+//
+// Covers: canvas render, block selection, TDD sandbox (pass/fail/timeout),
+// settings modal, add block, no console errors. Does NOT exercise the
+// Claude API path (that needs an ANTHROPIC_API_KEY and is skipped here).
+
+import { chromium } from 'playwright';
+import { spawn } from 'node:child_process';
+
+const log = (msg) => console.log(`[e2e] ${msg}`);
+
+async function waitForVite() {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('npm', ['run', 'dev'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: false,
+    });
+    let ready = false;
+    proc.stdout.on('data', (chunk) => {
+      const s = chunk.toString();
+      const m = s.match(/Local:\s+(http:\/\/[^\s]+)/);
+      if (m && !ready) {
+        ready = true;
+        resolve({ proc, url: m[1].replace(/\/$/, '') });
+      }
+    });
+    proc.stderr.on('data', (c) => process.stderr.write('[vite stderr] ' + c));
+    proc.on('exit', (code) => {
+      if (!ready) reject(new Error(`vite exited early with code ${code}`));
+    });
+    setTimeout(() => {
+      if (!ready) reject(new Error('vite did not become ready within 15s'));
+    }, 15000);
+  });
+}
+
+let vite;
+let browser;
+let failures = 0;
+const errors = [];
+
+function check(label, cond, detail) {
+  if (cond) log(`  ✓ ${label}`);
+  else {
+    log(`  ✗ ${label}${detail ? ' — ' + detail : ''}`);
+    failures++;
+  }
+}
+
+try {
+  log('starting vite…');
+  vite = await waitForVite();
+  log(`vite ready at ${vite.url}`);
+
+  browser = await chromium.launch({ headless: true });
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+
+  page.on('pageerror', (e) => { errors.push(`pageerror: ${e.message}`); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`);
+  });
+
+  log('loading app…');
+  await page.goto(vite.url, { waitUntil: 'networkidle' });
+
+  // 1. App renders without top-level errors
+  log('\n=== 1. initial load ===');
+  await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+  const nodeCount = (await page.$$('.react-flow__node')).length;
+  check('canvas mounts', nodeCount > 0, `saw ${nodeCount} nodes`);
+  check('exactly 3 seed blocks', nodeCount === 3, `got ${nodeCount}`);
+  check('toolbar title visible', !!(await page.getByText('Agent Coding View').first()));
+  check('empty inspector message', !!(await page.getByText('No block selected').count()));
+
+  // 2. Click the "validate" block — name is a display span, so click propagates
+  log('\n=== 2. select validate block ===');
+  const rfNodes = page.locator('.react-flow__node');
+  const rfCount = await rfNodes.count();
+  let validateIdx = -1;
+  for (let i = 0; i < rfCount; i++) {
+    const val = await rfNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'validate') { validateIdx = i; break; }
+  }
+  check('found validate block on canvas', validateIdx >= 0, `checked ${rfCount} nodes`);
+  await rfNodes.nth(validateIdx).locator('.fblock__body').click();
+  await page.waitForTimeout(300);
+  const inspectorTitle = await page.locator('.inspector__title').textContent();
+  check('inspector shows selected block name', inspectorTitle === 'validate', `got "${inspectorTitle}"`);
+
+  // 3. Run tests — expect all three green
+  log('\n=== 3. run tests on seed body ===');
+  await page.getByRole('button', { name: 'Run tests' }).click();
+  await page.waitForSelector('.test-results', { timeout: 8000 });
+  const passCount = await page.locator('.test-result.pass').count();
+  const failCount = await page.locator('.test-result.fail').count();
+  check('test results panel appears', true);
+  check('all 3 tests pass', passCount === 3 && failCount === 0, `${passCount} pass / ${failCount} fail`);
+  const countLabel = await page.locator('.test-results__count').textContent();
+  check('count label shows 3/3', countLabel === '3/3 passing', `got "${countLabel}"`);
+  await page.waitForTimeout(300);
+  const passingBlock = await page.locator('.fblock.status-passing').count();
+  check('validate block gets status-passing class', passingBlock >= 1, `saw ${passingBlock}`);
+
+  // 4. Break the body → run tests → expect red
+  log('\n=== 4. break body, expect red ===');
+  const testsBox = page.locator('.inspector textarea').first();
+  await testsBox.fill(`test('always fails', () => { expect(1).toBe(2); });`);
+  await page.getByRole('button', { name: 'Run tests' }).click();
+  await page.waitForTimeout(500);
+  const failAfter = await page.locator('.test-result.fail').count();
+  check('failing test shows red', failAfter >= 1, `saw ${failAfter} fail rows`);
+  const failingBlock = await page.locator('.fblock.status-failing').count();
+  check('block gets status-failing class', failingBlock >= 1, `saw ${failingBlock}`);
+
+  // 5. Test timeout — infinite loop should be killed
+  log('\n=== 5. infinite loop triggers timeout ===');
+  await testsBox.fill(`test('infinite loop', () => { while(true) {} });`);
+  const t0 = Date.now();
+  await page.getByRole('button', { name: 'Run tests' }).click();
+  await page.waitForFunction(
+    () => document.querySelector('.test-result')?.textContent?.includes('timeout'),
+    { timeout: 10000 },
+  );
+  const elapsed = Date.now() - t0;
+  check('timeout fires within ~5-7s', elapsed >= 4500 && elapsed <= 8000, `${elapsed}ms`);
+  const timeoutText = await page.locator('.test-result').first().textContent();
+  check('timeout error message mentions "timeout"', timeoutText?.toLowerCase().includes('timeout'), timeoutText);
+
+  // 6. Settings modal opens + closes
+  log('\n=== 6. settings modal ===');
+  await page.locator('.toolbar .icon-btn').click();
+  await page.waitForSelector('.modal', { timeout: 2000 });
+  check('settings modal appears', !!(await page.locator('.modal').count()));
+  const apiKeyInput = await page.locator('input[type="password"]').count();
+  check('API key input present', apiKeyInput === 1);
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.waitForTimeout(200);
+  const modalAfter = await page.locator('.modal').count();
+  check('modal closes on Done', modalAfter === 0);
+
+  // 7. Add a new block via toolbar
+  log('\n=== 7. add new block ===');
+  const beforeAdd = (await page.$$('.react-flow__node')).length;
+  await page.getByRole('button', { name: '+ Add block' }).click();
+  await page.waitForTimeout(200);
+  const afterAdd = (await page.$$('.react-flow__node')).length;
+  check('+ Add block adds a node', afterAdd === beforeAdd + 1, `${beforeAdd} → ${afterAdd}`);
+
+  // 8. Double-click name enters edit mode
+  log('\n=== 8. double-click name to edit ===');
+  const anyNode = page.locator('.react-flow__node').first();
+  await anyNode.locator('.fblock__name').first().dblclick();
+  await page.waitForTimeout(200);
+  const editInputs = await anyNode.locator('input.fblock__name').count();
+  check('double-click opens input', editInputs === 1);
+
+  log('\n=== console/page errors during run ===');
+  if (errors.length === 0) {
+    log('  ✓ no console or page errors');
+  } else {
+    errors.forEach((e) => log(`  ✗ ${e}`));
+    failures += errors.length;
+  }
+} catch (err) {
+  log(`FATAL: ${err?.stack || err}`);
+  failures++;
+} finally {
+  if (browser) await browser.close();
+  if (vite?.proc) {
+    try { vite.proc.kill('SIGTERM'); } catch {}
+  }
+}
+
+log('');
+log(failures === 0 ? '=== ALL CHECKS PASSED ===' : `=== ${failures} CHECK(S) FAILED ===`);
+process.exit(failures === 0 ? 0 : 1);
