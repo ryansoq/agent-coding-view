@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGraphStore } from './store';
 import { useSettingsStore } from './settingsStore';
 import { DevMode, FunctionBlockData } from './types';
-import { generateBody, generateBodyAsync } from './llm';
+import { generateBody, generateBodyAsync, TokenUsage } from './llm';
 import { LANGUAGES, labelFor } from './languages';
 import { runTests, isLanguageSandboxed, RunResult, RunHandle } from './sandbox/runner';
 import { detectCycles } from './graph';
@@ -37,6 +37,7 @@ export function Inspector() {
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<RunResult | null>(null);
   const [iterationInfo, setIterationInfo] = useState<string | null>(null);
+  const [lastUsage, setLastUsage] = useState<TokenUsage | null>(null);
 
   // Shared across Generate / Auto TDD / Run tests so Stop cleanly cancels whichever is in flight.
   const userAborted = useRef({ aborted: false });
@@ -70,6 +71,7 @@ export function Inspector() {
     setLastResult(null);
     setError(null);
     setIterationInfo(null);
+    setLastUsage(null);
     if (iterationInfoTimer.current) {
       window.clearTimeout(iterationInfoTimer.current);
       iterationInfoTimer.current = null;
@@ -116,6 +118,7 @@ export function Inspector() {
     setLastResult(null);
     clearIterationInfoTimer();
     setIterationInfo(null);
+    setLastUsage(null);
     userAborted.current.aborted = false;
     patch(selected.id, { body: '', status: 'generating', testCounts: undefined });
 
@@ -125,8 +128,9 @@ export function Inspector() {
       { block: d, neighbors, language: effectiveLanguage },
       {
         onDelta: (delta) => appendBody(selected.id, delta),
-        onDone: ({ body }) => {
+        onDone: ({ body, usage }) => {
           patch(selected.id, { body, status: 'specd' });
+          if (usage) setLastUsage(usage);
           genAbort.current = null;
         },
         onError: (err) => {
@@ -464,6 +468,14 @@ export function Inspector() {
             {isGenerating && <span className="cursor">▍</span>}
           </pre>
           {iterationInfo && <span className="field__hint">{iterationInfo}</span>}
+          {lastUsage && !isBusy && (
+            <span className="field__hint">
+              Tokens: {lastUsage.input_tokens} in / {lastUsage.output_tokens} out
+              {lastUsage.cache_read_input_tokens
+                ? ` (${lastUsage.cache_read_input_tokens} from cache)`
+                : ''}
+            </span>
+          )}
           {d.mode === 'TDD' && effectiveLanguage === 'python' && isBusy && (
             <span className="field__hint">
               Running Python sandbox — first run downloads Pyodide (~10MB) and may take up to 15s.

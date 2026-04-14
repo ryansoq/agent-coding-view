@@ -832,6 +832,11 @@ try {
       );
     }
     check('anthropic endpoint was hit at least once', intercepted >= 1, `count=${intercepted}`);
+    // Token usage hint should appear after onDone fires
+    await mockedPage.waitForTimeout(200);
+    const hints = await mockedPage.locator('.field__hint').allTextContents();
+    const usageHint = hints.find((h) => /Tokens:\s*\d+\s*in\s*\/\s*\d+\s*out/.test(h));
+    check('token usage hint shows after generate', !!usageHint, `hints: ${JSON.stringify(hints)}`);
   }
 
   await mockedPage.unroute('https://api.anthropic.com/**');

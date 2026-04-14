@@ -17,9 +17,16 @@ export interface GenerateInput {
   };
 }
 
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
 export interface GenerateCallbacks {
   onDelta: (text: string) => void;
-  onDone: (final: { fullText: string; body: string }) => void;
+  onDone: (final: { fullText: string; body: string; usage?: TokenUsage }) => void;
   onError: (err: Error) => void;
 }
 
@@ -272,10 +279,18 @@ export function generateBody(
 
   stream
     .finalMessage()
-    .then(() => {
+    .then((final) => {
       if (state.aborted) return;
       const body = extractCodeBlock(fullText);
-      cb.onDone({ fullText, body });
+      const usage: TokenUsage | undefined = final.usage
+        ? {
+            input_tokens: final.usage.input_tokens,
+            output_tokens: final.usage.output_tokens,
+            cache_read_input_tokens: final.usage.cache_read_input_tokens ?? undefined,
+            cache_creation_input_tokens: final.usage.cache_creation_input_tokens ?? undefined,
+          }
+        : undefined;
+      cb.onDone({ fullText, body, usage });
     })
     .catch((err: unknown) => {
       if (state.aborted) return;
