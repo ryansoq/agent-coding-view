@@ -92,12 +92,22 @@ interface WorkerRequest {
 }
 
 let pyodidePromise: Promise<any> | null = null;
+// Track whether PY_RUNTIME has been executed against the current Pyodide
+// instance. Running it once is enough — test/expect/json live in the module
+// global scope and persist across runPython calls, so subsequent runs only
+// need to reset __results and define the user function.
+let runtimeLoaded = false;
 
-function getPyodide(): Promise<any> {
+async function getPyodide(): Promise<any> {
   if (!pyodidePromise) {
     pyodidePromise = loadPyodide({ indexURL: PYODIDE_BASE });
   }
-  return pyodidePromise;
+  const pyodide = await pyodidePromise;
+  if (!runtimeLoaded) {
+    pyodide.runPython(PY_RUNTIME);
+    runtimeLoaded = true;
+  }
+  return pyodide;
 }
 
 const pyCtx = self as unknown as {
@@ -133,9 +143,10 @@ pyCtx.onmessage = async (e: MessageEvent) => {
       `def ${functionName}(${paramList}):\n` +
       (indentedBody.trim() ? indentedBody : '    pass');
 
+    // PY_RUNTIME was loaded once in getPyodide(); per-run scripts only need
+    // to reset results, define the user function, and run the tests.
     const script =
-      PY_RUNTIME +
-      '\n\n' +
+      '__results = []\n' +
       defBlock +
       '\n\n' +
       tests +

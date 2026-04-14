@@ -213,13 +213,25 @@ try {
     const pyPassingBlock = await page.locator('.fblock.status-passing').count();
     check('py_slug block gets status-passing class', pyPassingBlock >= 1);
 
-    // Second run should reuse the warm worker and be much faster.
+    // Second run should reuse the warm worker AND the pre-loaded PY_RUNTIME.
+    // Deselect → reselect to clear lastResult so the test-results panel
+    // disappears and reappears, giving us a real before/after signal to
+    // measure the true warm-run latency.
+    await page.locator('.react-flow__pane').click({ position: { x: 50, y: 10 } });
+    await page.waitForTimeout(150);
+    await rfNodes2.nth(pyIdx).locator('.fblock__body').click();
+    await page.waitForTimeout(150);
+    const warmResultsVisible = await page.locator('.test-results').count();
+    check('results panel cleared on reselect', warmResultsVisible === 0);
+
     const t1py = Date.now();
     await page.getByRole('button', { name: 'Run tests' }).click();
-    await page.waitForTimeout(1500);
+    await page.waitForSelector('.test-results .test-result', { timeout: 8000 });
     const t1Elapsed = Date.now() - t1py;
     log(`  (pyodide warm run took ${t1Elapsed}ms)`);
-    check('warm pyodide run finishes in <3s', t1Elapsed < 3000, `${t1Elapsed}ms`);
+    // P4.5 target: after PY_RUNTIME preload, warm runs should complete in
+    // well under a second.
+    check('warm pyodide run finishes in <800ms', t1Elapsed < 800, `${t1Elapsed}ms`);
   }
 
   log('\n=== console/page errors during run ===');

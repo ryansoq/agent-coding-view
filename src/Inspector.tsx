@@ -434,6 +434,11 @@ export function Inspector() {
             {isGenerating && <span className="cursor">▍</span>}
           </pre>
           {iterationInfo && <span className="field__hint">{iterationInfo}</span>}
+          {d.mode === 'TDD' && effectiveLanguage === 'python' && isBusy && (
+            <span className="field__hint">
+              Running Python sandbox — first run downloads Pyodide (~10MB) and may take up to 15s.
+            </span>
+          )}
           {neighbors.length > 0 && (
             <span className="field__hint">
               Context: {neighbors.length} neighbor{neighbors.length > 1 ? 's' : ''} ({neighbors.map((n) => n.name).join(', ')})
