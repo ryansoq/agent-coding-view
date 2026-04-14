@@ -17,6 +17,7 @@ import { exportGraph } from './exporter';
 import { importJs } from './importer';
 import { IssuesModal } from './IssuesModal';
 import { countIssues } from './validation';
+import { runTests, isLanguageSandboxed } from './sandbox/runner';
 
 function Canvas() {
   const nodes = useGraphStore((s) => s.nodes);
@@ -41,6 +42,50 @@ function Canvas() {
   const issueCounts = useMemo(() => countIssues(nodes, edges), [nodes, edges]);
 
   const [issuesOpen, setIssuesOpen] = useState(false);
+
+  const onRunAll = useCallback(async () => {
+    const state = useGraphStore.getState();
+    const defaultLang = useSettingsStore.getState().language;
+    const candidates = state.nodes.filter((n) => {
+      if (n.data.mode !== 'TDD') return false;
+      if (!n.data.body.trim() || !n.data.tests.trim()) return false;
+      const lang = n.data.language || defaultLang;
+      return isLanguageSandboxed(lang);
+    });
+    if (candidates.length === 0) {
+      alert('No runnable TDD blocks — need a body, tests, and a JS/TS/Python language.');
+      return;
+    }
+    // Sequential, not parallel — Python uses a singleton worker that
+    // wouldn't tolerate concurrent calls anyway, and ordering keeps the
+    // UI predictable.
+    for (const block of candidates) {
+      const lang = block.data.language || defaultLang;
+      state.patchBlock(block.id, { status: 'running_tests' });
+      const handle = runTests({
+        language: lang,
+        functionName: block.data.name,
+        signature: block.data.signature,
+        body: block.data.body,
+        tests: block.data.tests,
+      });
+      const result = await handle.promise;
+      if (result.status === 'done') {
+        const passed = result.results.filter((r) => r.ok).length;
+        const total = result.results.length;
+        const allOk = total > 0 && passed === total;
+        state.patchBlock(block.id, {
+          status: allOk ? 'passing' : 'failing',
+          testCounts: { passed, total },
+        });
+      } else {
+        state.patchBlock(block.id, {
+          status: 'failing',
+          testCounts: { passed: 0, total: 0 },
+        });
+      }
+    }
+  }, []);
 
   const onLayout = useCallback(async () => {
     const { nodes: n, edges: e } = useGraphStore.getState();
@@ -158,6 +203,7 @@ function Canvas() {
         <button onClick={deleteSelected} title="Delete selected (Del)">Delete</button>
         <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl/Cmd+Z)">Undo</button>
         <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z / Ctrl+Y)">Redo</button>
+        <button onClick={onRunAll} title="Run tests on every TDD block in sequence">Run all</button>
         <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
         <button onClick={onExport} title="Export all blocks of the default language as one source file">Export</button>
         <button onClick={onImportClick} title="Import a .js file — each top-level function becomes a block">Import JS</button>

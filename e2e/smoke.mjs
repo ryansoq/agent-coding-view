@@ -433,6 +433,18 @@ try {
   // Restore seed graph for subsequent sections
   await clearGraphAndReload(page, vite.url);
 
+  // 9aa. Run all — one click should send both validate (JS) and py_slug
+  // (Python) to passing state. Pyodide cold-start happens here on a
+  // fresh page so allow ~30s.
+  log('\n=== 9aa. Run all tests ===');
+  await page.getByRole('button', { name: 'Run all' }).click();
+  await page.waitForFunction(
+    () => document.querySelectorAll('.fblock.status-passing').length >= 2,
+    { timeout: 30000 },
+  );
+  const passingAfterRunAll = await page.locator('.fblock.status-passing').count();
+  check('Run all leaves both TDD blocks passing', passingAfterRunAll >= 2, `${passingAfterRunAll}`);
+
   // 9b0. Persist roundtrip — add a block, reload (without clearing
   // localStorage), verify the new block is still on the canvas. Also
   // verify the inverse: clearing graph storage restores seeds.
