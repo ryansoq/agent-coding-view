@@ -418,7 +418,7 @@ try {
   const pathMod2 = await import('node:path');
   const stdoutTmp = pathMod2.join(os2.tmpdir(), `e2e-stdout-${Date.now()}.json`);
   await fs2.writeFile(stdoutTmp, stdoutGraph);
-  await page.locator('input[type="file"]').setInputFiles(stdoutTmp);
+  await page.locator("input[type=\"file\"]").first().setInputFiles(stdoutTmp);
   await page.waitForTimeout(300);
   // Click the only block
   await page.locator('.react-flow__node').first().locator('.fblock__body').click();
@@ -473,7 +473,7 @@ try {
   const pathMod = await import('node:path');
   const tmpFile = pathMod.join(os.tmpdir(), `e2e-cycle-${Date.now()}.json`);
   await fs.writeFile(tmpFile, cycleJson);
-  await page.locator('input[type="file"]').setInputFiles(tmpFile);
+  await page.locator("input[type=\"file\"]").first().setInputFiles(tmpFile);
   await page.waitForTimeout(300);
   const cycleNodes = (await page.$$('.react-flow__node')).length;
   check('loaded cyclic graph has 2 nodes', cycleNodes === 2, `saw ${cycleNodes}`);
@@ -546,6 +546,49 @@ try {
     const name = exportDownload.suggestedFilename();
     check('export filename ends in .js', name.endsWith('.js'), `filename: ${name}`);
   }
+
+  // 9f. Import JS — round-trip: export the seed graph, clear, import the
+  // exported file, verify validate is back as a block.
+  log('\n=== 9f. import JS round-trip ===');
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('agent-coding-view:settings');
+    const parsed = raw ? JSON.parse(raw) : { state: {}, version: 0 };
+    parsed.state = { ...parsed.state, language: 'javascript' };
+    localStorage.setItem('agent-coding-view:settings', JSON.stringify(parsed));
+  });
+  await clearGraphAndReload(page, vite.url);
+
+  const [importExport] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.getByRole('button', { name: 'Export' }).click(),
+  ]);
+  const exportedPath = await importExport.path();
+  check('export downloaded for round-trip', !!exportedPath);
+
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.waitForTimeout(150);
+  const empty = (await page.$$('.react-flow__node')).length;
+  check('canvas empty before import', empty === 0);
+
+  if (exportedPath) {
+    // Two hidden file inputs exist after the Import button was added:
+    // [0] = JSON loader, [1] = JS importer.
+    const importInputs = page.locator('input[type="file"]');
+    const fileInputs = await importInputs.count();
+    check('two hidden file inputs present', fileInputs === 2, `count=${fileInputs}`);
+    await importInputs.nth(1).setInputFiles(exportedPath);
+    await page.waitForTimeout(300);
+    const afterImport = (await page.$$('.react-flow__node')).length;
+    check('import created at least one block', afterImport >= 1, `${afterImport} nodes`);
+    const importedNames = await page.locator('.fblock__name').allTextContents();
+    check(
+      'imported graph contains validate',
+      importedNames.some((n) => n.trim() === 'validate'),
+      `names: ${importedNames.join(', ')}`,
+    );
+  }
+
+  await clearGraphAndReload(page, vite.url);
 
   // 9e. Issues modal — the seed graph is clean (no failing tests, no
   // cycles, no duplicate names, all TDD blocks have tests), so the
@@ -628,7 +671,7 @@ try {
     check('clear removes all nodes', afterClearNodes === 0, `${afterClearNodes} nodes left`);
 
     if (savedPath) {
-      await page.locator('input[type="file"]').setInputFiles(savedPath);
+      await page.locator("input[type=\"file\"]").first().setInputFiles(savedPath);
       await page.waitForTimeout(300);
       const loadedNodes = (await page.$$('.react-flow__node')).length;
       const loadedEdges = (await page.$$('.react-flow__edge')).length;

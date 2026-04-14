@@ -14,6 +14,7 @@ import { SettingsModal } from './SettingsModal';
 import { useSettingsStore } from './settingsStore';
 import { computeLayout } from './layout';
 import { exportGraph } from './exporter';
+import { importJs } from './importer';
 import { IssuesModal } from './IssuesModal';
 import { countIssues } from './validation';
 
@@ -31,6 +32,7 @@ function Canvas() {
   const undo = useGraphStore((s) => s.undo);
   const redo = useGraphStore((s) => s.redo);
   const applyLayout = useGraphStore((s) => s.applyLayout);
+  const importGraph = useGraphStore((s) => s.importGraph);
   const canUndo = useGraphStore((s) => s.history.length > 0);
   const canRedo = useGraphStore((s) => s.future.length > 0);
   // countIssues returns a fresh object so we can't inline it in the selector
@@ -46,6 +48,31 @@ function Canvas() {
     const positions = await computeLayout(n, e);
     applyLayout(positions);
   }, [applyLayout]);
+
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const onImportClick = useCallback(() => importInputRef.current?.click(), []);
+
+  const onImportPicked = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const { language } = useSettingsStore.getState();
+        const { nodes: parsedNodes, edges: parsedEdges } = importJs(text, language);
+        if (parsedNodes.length === 0) {
+          alert('No top-level function declarations found in the file.');
+          return;
+        }
+        importGraph(parsedNodes, parsedEdges);
+      } catch (err) {
+        alert(`Import failed: ${(err as Error).message}`);
+      }
+      e.target.value = '';
+    },
+    [importGraph],
+  );
 
   const onExport = useCallback(() => {
     const { nodes: n, edges: e } = useGraphStore.getState();
@@ -133,6 +160,7 @@ function Canvas() {
         <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z / Ctrl+Y)">Redo</button>
         <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
         <button onClick={onExport} title="Export all blocks of the default language as one source file">Export</button>
+        <button onClick={onImportClick} title="Import a .js file — each top-level function becomes a block">Import JS</button>
         <button
           onClick={() => setIssuesOpen(true)}
           className={issueCounts.errors > 0 ? 'issues-btn issues-btn--has-errors' : issueCounts.warnings > 0 ? 'issues-btn issues-btn--has-warnings' : 'issues-btn'}
@@ -150,6 +178,13 @@ function Canvas() {
           accept="application/json"
           style={{ display: 'none' }}
           onChange={onFilePicked}
+        />
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".js,.ts,.mjs,text/javascript"
+          style={{ display: 'none' }}
+          onChange={onImportPicked}
         />
       </div>
       <div className="workspace">

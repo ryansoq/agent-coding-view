@@ -37,6 +37,7 @@ interface GraphState {
   duplicateBlock: (id: string) => void;
   selectOnly: (id: string) => void;
   applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
+  importGraph: (nodes: FBlockNode[], edges: Edge[]) => void;
   patchBlock: (id: string, patch: Partial<FunctionBlockData>) => void;
   appendBlockBody: (id: string, delta: string) => void;
   resetBlockBody: (id: string) => void;
@@ -283,6 +284,27 @@ export const useGraphStore = create<GraphState>()(
     set((state) => ({
       nodes: state.nodes.map((n) => ({ ...n, selected: n.id === id })),
     })),
+
+  importGraph: (incomingNodes, incomingEdges) =>
+    set((state) => {
+      // Bump the id counters past anything in the incoming set so the next
+      // addBlock / onConnect doesn't collide.
+      const maxNodeId = incomingNodes
+        .map((n) => Number(n.id.replace(/^b/, '')))
+        .filter((n) => !Number.isNaN(n))
+        .reduce((a, b) => Math.max(a, b), 0);
+      if (maxNodeId >= idCounter) idCounter = maxNodeId + 1;
+      const maxEdgeId = incomingEdges
+        .map((e) => Number(e.id.replace(/^e/, '')))
+        .filter((n) => !Number.isNaN(n))
+        .reduce((a, b) => Math.max(a, b), 0);
+      if (maxEdgeId >= edgeCounter) edgeCounter = maxEdgeId + 1;
+      return {
+        ...pushHistory(state),
+        nodes: incomingNodes,
+        edges: incomingEdges,
+      };
+    }),
 
   // patchBlock, appendBlockBody, resetBlockBody are "live" fine-grained
   // updates (streaming deltas, status flips, form field edits). They
