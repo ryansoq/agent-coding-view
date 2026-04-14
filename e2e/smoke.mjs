@@ -366,6 +366,34 @@ try {
   await page.goto(vite.url, { waitUntil: 'networkidle' });
   await page.waitForSelector('.react-flow__node');
 
+  // 9c. Auto-layout — capture positions before, click Layout, verify at
+  // least one block moved (dagre repositions them into columns).
+  log('\n=== 9c. auto-layout ===');
+  const before = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('.react-flow__node')).map((el) => {
+      const t = (el).style.transform || '';
+      const m = t.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+      return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : null;
+    });
+  });
+  await page.getByRole('button', { name: 'Layout' }).click();
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('.react-flow__node')).map((el) => {
+      const t = (el).style.transform || '';
+      const m = t.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+      return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : null;
+    });
+  });
+  const moved = before.some((b, i) => {
+    const a = after[i];
+    return b && a && (Math.abs(b.x - a.x) > 10 || Math.abs(b.y - a.y) > 10);
+  });
+  check('auto-layout repositions blocks', moved, `before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
+  // Undo the layout so subsequent sections see the seed positions.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(200);
+
   // 10. Save / Load JSON round-trip
   log('\n=== 10. save/load JSON round-trip ===');
   try {

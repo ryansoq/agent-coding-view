@@ -34,6 +34,7 @@ interface GraphState {
   addBlock: (at?: { x: number; y: number }) => void;
   deleteSelected: () => void;
   duplicateBlock: (id: string) => void;
+  applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
   patchBlock: (id: string, patch: Partial<FunctionBlockData>) => void;
   appendBlockBody: (id: string, delta: string) => void;
   resetBlockBody: (id: string) => void;
@@ -263,6 +264,14 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         ),
       };
     }),
+
+  applyLayout: (positions) =>
+    set((state) => ({
+      ...pushHistory(state),
+      nodes: state.nodes.map((n) =>
+        positions[n.id] ? { ...n, position: positions[n.id] } : n,
+      ),
+    })),
 
   // patchBlock, appendBlockBody, resetBlockBody are "live" fine-grained
   // updates (streaming deltas, status flips, form field edits). They

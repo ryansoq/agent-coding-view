@@ -12,6 +12,7 @@ import { useGraphStore } from './store';
 import { Inspector } from './Inspector';
 import { SettingsModal } from './SettingsModal';
 import { useSettingsStore } from './settingsStore';
+import { computeLayout } from './layout';
 
 function Canvas() {
   const nodes = useGraphStore((s) => s.nodes);
@@ -26,8 +27,15 @@ function Canvas() {
   const reset = useGraphStore((s) => s.reset);
   const undo = useGraphStore((s) => s.undo);
   const redo = useGraphStore((s) => s.redo);
+  const applyLayout = useGraphStore((s) => s.applyLayout);
   const canUndo = useGraphStore((s) => s.history.length > 0);
   const canRedo = useGraphStore((s) => s.future.length > 0);
+
+  const onLayout = useCallback(() => {
+    const { nodes: n, edges: e } = useGraphStore.getState();
+    if (n.length === 0) return;
+    applyLayout(computeLayout(n, e));
+  }, [applyLayout]);
 
   const openSettings = useSettingsStore((s) => s.open);
 
@@ -95,6 +103,7 @@ function Canvas() {
         <button onClick={deleteSelected} title="Delete selected (Del)">Delete</button>
         <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl/Cmd+Z)">Undo</button>
         <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z / Ctrl+Y)">Redo</button>
+        <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
         <button onClick={onSave}>Save JSON</button>
         <button onClick={onLoad}>Load JSON</button>
         <button onClick={reset}>Clear</button>
