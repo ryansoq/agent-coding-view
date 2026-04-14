@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import {
   Node,
   Edge,
@@ -169,7 +170,9 @@ const seedEdges: Edge[] = [
 // Store
 // ---------------------------------------------------------------------------
 
-export const useGraphStore = create<GraphState>((set, get) => ({
+export const useGraphStore = create<GraphState>()(
+  persist(
+    (set, get) => ({
   nodes: seedNodes,
   edges: seedEdges,
   history: [],
@@ -389,4 +392,27 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   reset: () =>
     set((state) => ({ ...pushHistory(state), nodes: [], edges: [] })),
-}));
+    }),
+    {
+      name: 'agent-coding-view:graph',
+      // Persist only structural data — history/future and any in-flight
+      // selection state are session-local.
+      partialize: (s) => ({ nodes: s.nodes, edges: s.edges }),
+      // After hydration, sync the id counters so the next addBlock /
+      // onConnect doesn't collide with persisted ids.
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const maxNodeId = state.nodes
+          .map((n) => Number(n.id.replace(/^b/, '')))
+          .filter((n) => !Number.isNaN(n))
+          .reduce((a, b) => Math.max(a, b), 0);
+        if (maxNodeId >= idCounter) idCounter = maxNodeId + 1;
+        const maxEdgeId = state.edges
+          .map((e) => Number(e.id.replace(/^e/, '')))
+          .filter((n) => !Number.isNaN(n))
+          .reduce((a, b) => Math.max(a, b), 0);
+        if (maxEdgeId >= edgeCounter) edgeCounter = maxEdgeId + 1;
+      },
+    },
+  ),
+);

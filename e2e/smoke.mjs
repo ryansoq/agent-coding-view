@@ -61,6 +61,14 @@ function check(label, cond, detail) {
   }
 }
 
+async function clearGraphAndReload(page, viteUrl) {
+  // Clear ONLY the persisted graph so settings (api key for mocked
+  // sections) survive. Then reload to pick up the seed graph fresh.
+  await page.evaluate(() => localStorage.removeItem('agent-coding-view:graph'));
+  await page.goto(viteUrl, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.react-flow__node');
+}
+
 try {
   log('starting vite…');
   vite = await waitForVite();
@@ -423,8 +431,26 @@ try {
   await fs2.unlink(stdoutTmp).catch(() => {});
 
   // Restore seed graph for subsequent sections
-  await page.goto(vite.url, { waitUntil: 'networkidle' });
+  await clearGraphAndReload(page, vite.url);
+
+  // 9b0. Persist roundtrip — add a block, reload (without clearing
+  // localStorage), verify the new block is still on the canvas. Also
+  // verify the inverse: clearing graph storage restores seeds.
+  log('\n=== 9b0. graph persist across reload ===');
+  const persistBefore = (await page.$$('.react-flow__node')).length;
+  await page.getByRole('button', { name: '+ Add block' }).click();
+  await page.waitForTimeout(150);
+  const persistAfter = (await page.$$('.react-flow__node')).length;
+  check('block added before reload', persistAfter === persistBefore + 1);
+  // Plain reload — persist should restore the new state
+  await page.reload({ waitUntil: 'networkidle' });
   await page.waitForSelector('.react-flow__node');
+  const afterReload = (await page.$$('.react-flow__node')).length;
+  check('persist survives reload', afterReload === persistBefore + 1, `${persistBefore + 1} vs ${afterReload}`);
+  // Clean up: clear and reload to restore seeds
+  await clearGraphAndReload(page, vite.url);
+  const restored = (await page.$$('.react-flow__node')).length;
+  check('clearing graph storage restores seeds', restored === persistBefore, `${persistBefore} vs ${restored}`);
 
   // 9b. Cycle detection warning — drag-drop is fiddly in headless, so
   // inject a crafted cyclic graph via the file loader and verify the
@@ -460,8 +486,7 @@ try {
   await fs.unlink(tmpFile).catch(() => {});
 
   // Restore the seed state so the save/load test below has something to work with.
-  await page.goto(vite.url, { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await clearGraphAndReload(page, vite.url);
 
   // 9c. Auto-layout — capture positions before, click Layout, verify at
   // least one block moved (dagre repositions them into columns).
