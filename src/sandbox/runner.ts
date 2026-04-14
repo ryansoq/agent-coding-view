@@ -40,9 +40,16 @@ export function extractParams(signature: string): string[] {
     .map((p) => {
       p = p.trim();
       if (!p) return '';
+      // Split at the first `=` (default value). Everything before is "name[: type]",
+      // everything after is the default expression.
       const eqIdx = p.indexOf('=');
       const nameType = eqIdx === -1 ? p : p.slice(0, eqIdx);
-      const def = eqIdx === -1 ? '' : ' ' + p.slice(eqIdx);
+      // Normalise the default to ` = value` regardless of original spacing so
+      // the reconstructed parameter list is stable across inputs like `y=5`
+      // vs `y = 5`.
+      const defaultValue = eqIdx === -1 ? '' : p.slice(eqIdx + 1).trim();
+      const def = defaultValue ? ` = ${defaultValue}` : '';
+      // Strip TS-style type annotation from name side.
       const colonIdx = nameType.indexOf(':');
       const name = (colonIdx === -1 ? nameType : nameType.slice(0, colonIdx)).trim();
       return name + def;
@@ -52,6 +59,7 @@ export function extractParams(signature: string): string[] {
 
 export function sanitizeName(name: string): string {
   const clean = name.replace(/[^A-Za-z0-9_$]/g, '_');
+  if (!clean) return '_';
   return /^[0-9]/.test(clean) ? `_${clean}` : clean;
 }
 

@@ -103,7 +103,7 @@ function dedent(text: string): string {
   return lines.map((l) => l.slice(minIndent)).join('\n');
 }
 
-function extractCodeBlock(full: string): string {
+export function extractCodeBlock(full: string): string {
   const fence = /```[a-zA-Z0-9_+-]*\n([\s\S]*?)```/;
   const match = full.match(fence);
   let code = (match ? match[1] : full).trim();
