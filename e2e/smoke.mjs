@@ -234,6 +234,43 @@ try {
     check('warm pyodide run finishes in <800ms', t1Elapsed < 800, `${t1Elapsed}ms`);
   }
 
+  // 9b. Cycle detection warning — drag-drop is fiddly in headless, so
+  // inject a crafted cyclic graph via the file loader and verify the
+  // Inspector shows the warning banner for a cycle member.
+  log('\n=== 9b. cycle detection warning ===');
+  const cycleJson = JSON.stringify({
+    version: 1,
+    nodes: [
+      { id: 'b1', position: { x: 100, y: 100 }, data: { name: 'A', signature: '(x) => x', mode: 'SDD', spec: '', tests: '', scope: [], body: '', status: 'stub', language: 'javascript' } },
+      { id: 'b2', position: { x: 300, y: 100 }, data: { name: 'B', signature: '(x) => x', mode: 'SDD', spec: '', tests: '', scope: [], body: '', status: 'stub', language: 'javascript' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'b1', target: 'b2' },
+      { id: 'e2', source: 'b2', target: 'b1' },
+    ],
+  });
+  // Write the crafted JSON to a temp file and load it.
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const pathMod = await import('node:path');
+  const tmpFile = pathMod.join(os.tmpdir(), `e2e-cycle-${Date.now()}.json`);
+  await fs.writeFile(tmpFile, cycleJson);
+  await page.locator('input[type="file"]').setInputFiles(tmpFile);
+  await page.waitForTimeout(300);
+  const cycleNodes = (await page.$$('.react-flow__node')).length;
+  check('loaded cyclic graph has 2 nodes', cycleNodes === 2, `saw ${cycleNodes}`);
+  // Click one of the blocks — both are in the cycle.
+  const rfNodes3 = page.locator('.react-flow__node');
+  await rfNodes3.nth(0).locator('.fblock__body').click();
+  await page.waitForTimeout(200);
+  const warning = await page.locator('.warning-banner').count();
+  check('cycle warning banner appears for cycle member', warning >= 1, `saw ${warning}`);
+  await fs.unlink(tmpFile).catch(() => {});
+
+  // Restore the seed state so the save/load test below has something to work with.
+  await page.goto(vite.url, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.react-flow__node');
+
   // 10. Save / Load JSON round-trip
   log('\n=== 10. save/load JSON round-trip ===');
   try {

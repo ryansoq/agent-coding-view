@@ -5,6 +5,7 @@ import { DevMode, FunctionBlockData } from './types';
 import { generateBody, generateBodyAsync } from './llm';
 import { LANGUAGES, labelFor } from './languages';
 import { runTests, isLanguageSandboxed, RunResult, RunHandle } from './sandbox/runner';
+import { detectCycles } from './graph';
 
 const MODES: DevMode[] = ['SDD', 'TDD', 'manual'];
 const MAX_TDD_ITERATIONS = 5;
@@ -60,6 +61,9 @@ export function Inspector() {
     }
     return list;
   }, [selected, nodes, edges]);
+
+  const cycleMembers = useMemo(() => detectCycles(nodes, edges), [nodes, edges]);
+  const selectedInCycle = selected ? cycleMembers.has(selected.id) : false;
 
   useEffect(() => {
     setLastResult(null);
@@ -297,6 +301,13 @@ export function Inspector() {
       </div>
 
       <div className="inspector__body">
+        {selectedInCycle && (
+          <div className="warning-banner">
+            ⚠ This block is part of a cycle in the graph. Upstream/downstream
+            directions become ambiguous and the LLM prompt may be confusing.
+            Consider breaking the loop.
+          </div>
+        )}
         <label className="field">
           <span className="field__label">Name</span>
           <input

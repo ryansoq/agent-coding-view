@@ -316,6 +316,16 @@ html, body, #root {
   font-size: 12px;
 }
 
+.warning-banner {
+  background: rgba(255,180,84,0.1);
+  border: 1px solid rgba(255,180,84,0.4);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 /* Settings modal */
 .modal-backdrop {
   position: fixed;
