@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -24,6 +24,10 @@ function Canvas() {
   const toJSON = useGraphStore((s) => s.toJSON);
   const fromJSON = useGraphStore((s) => s.fromJSON);
   const reset = useGraphStore((s) => s.reset);
+  const undo = useGraphStore((s) => s.undo);
+  const redo = useGraphStore((s) => s.redo);
+  const canUndo = useGraphStore((s) => s.history.length > 0);
+  const canRedo = useGraphStore((s) => s.future.length > 0);
 
   const openSettings = useSettingsStore((s) => s.open);
 
@@ -58,6 +62,29 @@ function Canvas() {
     [fromJSON],
   );
 
+  // Ctrl/Cmd+Z for undo, Ctrl+Shift+Z or Ctrl+Y for redo. Skip when the
+  // user is typing in a form field so native browser undo still works
+  // inside the Inspector's textareas.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl) return;
+      if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+
   return (
     <div className="app">
       <div className="toolbar">
@@ -66,6 +93,8 @@ function Canvas() {
         <span className="spacer" />
         <button className="primary" onClick={() => addBlock()}>+ Add block</button>
         <button onClick={deleteSelected} title="Delete selected (Del)">Delete</button>
+        <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl/Cmd+Z)">Undo</button>
+        <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z / Ctrl+Y)">Redo</button>
         <button onClick={onSave}>Save JSON</button>
         <button onClick={onLoad}>Load JSON</button>
         <button onClick={reset}>Clear</button>

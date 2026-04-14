@@ -180,6 +180,29 @@ try {
   const afterCleanup = (await page.$$('.react-flow__node')).length;
   check('new block cleaned up after add test', afterCleanup === beforeAdd, `${afterCleanup} nodes`);
 
+  // 7c. Undo/redo for structural ops — add a block, undo, assert it's gone;
+  // redo, assert it's back.
+  log('\n=== 7c. undo/redo ===');
+  const undoBefore = (await page.$$('.react-flow__node')).length;
+  await page.getByRole('button', { name: '+ Add block' }).click();
+  await page.waitForTimeout(150);
+  const undoAfterAdd = (await page.$$('.react-flow__node')).length;
+  check('add then count went up', undoAfterAdd === undoBefore + 1);
+  // Click Undo
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(150);
+  const undoAfterUndo = (await page.$$('.react-flow__node')).length;
+  check('undo rolls back to pre-add count', undoAfterUndo === undoBefore, `${undoBefore} vs ${undoAfterUndo}`);
+  // Click Redo
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await page.waitForTimeout(150);
+  const undoAfterRedo = (await page.$$('.react-flow__node')).length;
+  check('redo brings the block back', undoAfterRedo === undoBefore + 1, `${undoBefore + 1} vs ${undoAfterRedo}`);
+  // Clean up: the redone block is selected, Delete it (click toolbar Delete
+  // because exact match avoids the Delete-block variant in the Inspector).
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.waitForTimeout(150);
+
   // 7a. Duplicate block — selecting validate and clicking Duplicate makes
   // a new "validate_copy" block and leaves the clone selected.
   log('\n=== 7a. duplicate block ===');

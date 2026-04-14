@@ -15,9 +15,17 @@ import { useSettingsStore } from './settingsStore';
 
 export type FBlockNode = Node<FunctionBlockData>;
 
+interface Snapshot {
+  nodes: FBlockNode[];
+  edges: Edge[];
+}
+
 interface GraphState {
   nodes: FBlockNode[];
   edges: Edge[];
+
+  history: Snapshot[];
+  future: Snapshot[];
 
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
@@ -30,6 +38,9 @@ interface GraphState {
   appendBlockBody: (id: string, delta: string) => void;
   resetBlockBody: (id: string) => void;
 
+  undo: () => void;
+  redo: () => void;
+
   toJSON: () => string;
   fromJSON: (raw: string) => void;
   reset: () => void;
@@ -40,6 +51,40 @@ const nextId = () => `b${idCounter++}`;
 
 let edgeCounter = 1;
 const nextEdgeId = () => `e${edgeCounter++}`;
+
+// ---------------------------------------------------------------------------
+// Undo history
+// ---------------------------------------------------------------------------
+
+const HISTORY_CAPACITY = 50;
+
+function snap(state: Pick<GraphState, 'nodes' | 'edges'>): Snapshot {
+  // Shallow-clone at every level we mutate on undo/redo. Node.data itself is
+  // mostly treated as immutable elsewhere, but scope is an array we extend
+  // in place via the Inspector's onChange, so duplicate it defensively.
+  return {
+    nodes: state.nodes.map((n) => ({
+      ...n,
+      data: { ...n.data, scope: [...n.data.scope] },
+    })),
+    edges: state.edges.map((e) => ({ ...e })),
+  };
+}
+
+/**
+ * Helper used at the start of structural mutations. Returns the state slice
+ * that pushes the *current* pre-mutation state onto the history stack and
+ * clears the redo queue — merge it into whatever else the mutation returns.
+ */
+function pushHistory(state: GraphState): Pick<GraphState, 'history' | 'future'> {
+  const next = [...state.history, snap(state)];
+  if (next.length > HISTORY_CAPACITY) next.shift();
+  return { history: next, future: [] };
+}
+
+// ---------------------------------------------------------------------------
+// Seed data
+// ---------------------------------------------------------------------------
 
 const seedNodes: FBlockNode[] = [
   {
@@ -118,31 +163,47 @@ const seedEdges: Edge[] = [
   { id: nextEdgeId(), source: seedNodes[0].id, target: seedNodes[2].id },
 ];
 
+// ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
+
 export const useGraphStore = create<GraphState>((set, get) => ({
   nodes: seedNodes,
   edges: seedEdges,
+  history: [],
+  future: [],
 
   onNodesChange: (changes) =>
-    set((state) => ({
-      nodes: applyNodeChanges(changes, state.nodes) as FBlockNode[],
-    })),
+    set((state) => {
+      // Snapshot only on structural changes — drag/select would otherwise
+      // spam the history stack with hundreds of entries per drag.
+      const structural = changes.some(
+        (c) => c.type === 'remove' || c.type === 'add',
+      );
+      const nodes = applyNodeChanges(changes, state.nodes) as FBlockNode[];
+      return structural ? { ...pushHistory(state), nodes } : { nodes };
+    }),
 
   onEdgesChange: (changes) =>
-    set((state) => ({ edges: applyEdgeChanges(changes, state.edges) })),
+    set((state) => {
+      const structural = changes.some(
+        (c) => c.type === 'remove' || c.type === 'add',
+      );
+      const edges = applyEdgeChanges(changes, state.edges);
+      return structural ? { ...pushHistory(state), edges } : { edges };
+    }),
 
   onConnect: (conn) =>
     set((state) => {
-      // Skip self-loops — a block calling itself via the graph surface isn't
-      // representable in our neighbor model anyway.
       if (conn.source && conn.source === conn.target) return state;
-      // Dedupe: React Flow will happily add a second edge between the same
-      // source/target, which then shows up twice in the neighbors list and
-      // confuses the LLM prompt.
       const exists = state.edges.some(
         (e) => e.source === conn.source && e.target === conn.target,
       );
       if (exists) return state;
-      return { edges: addEdge({ ...conn, id: nextEdgeId() }, state.edges) };
+      return {
+        ...pushHistory(state),
+        edges: addEdge({ ...conn, id: nextEdgeId() }, state.edges),
+      };
     }),
 
   addBlock: (at) =>
@@ -159,12 +220,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         data,
         selected: true,
       };
-      // Deselect everything else so the new block is the focused one —
-      // same pattern as duplicateBlock so Delete/Inspector operate on the
-      // newly-created block without an extra click.
       const nodes = state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n));
       nodes.push(node);
-      return { nodes };
+      return { ...pushHistory(state), nodes };
     }),
 
   duplicateBlock: (id) =>
@@ -177,7 +235,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         type: 'fblock',
         position: { x: source.position.x + 40, y: source.position.y + 40 },
         data: {
-          // Deep-copy to avoid sharing arrays (scope) or object refs (testCounts).
           ...source.data,
           scope: [...source.data.scope],
           testCounts: source.data.testCounts ? { ...source.data.testCounts } : undefined,
@@ -185,10 +242,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         },
         selected: true,
       };
-      // Deselect everything else so the newly-created clone is the focused block.
       const nodes = state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n));
       nodes.push(clone);
-      return { nodes };
+      return { ...pushHistory(state), nodes };
     }),
 
   deleteSelected: () =>
@@ -197,6 +253,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       const selectedEdgeIds = new Set(state.edges.filter((e) => e.selected).map((e) => e.id));
       if (selectedNodeIds.size === 0 && selectedEdgeIds.size === 0) return state;
       return {
+        ...pushHistory(state),
         nodes: state.nodes.filter((n) => !selectedNodeIds.has(n.id)),
         edges: state.edges.filter(
           (e) =>
@@ -207,6 +264,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       };
     }),
 
+  // patchBlock, appendBlockBody, resetBlockBody are "live" fine-grained
+  // updates (streaming deltas, status flips, form field edits). They
+  // intentionally do NOT push history — undo is scoped to structural ops
+  // (add/delete/connect/disconnect) plus load/clear.
   patchBlock: (id, patch) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>
@@ -227,6 +288,32 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         n.id === id ? { ...n, data: { ...n.data, body: '' } } : n,
       ),
     })),
+
+  undo: () =>
+    set((state) => {
+      if (state.history.length === 0) return state;
+      const prev = state.history[state.history.length - 1];
+      const newHistory = state.history.slice(0, -1);
+      return {
+        nodes: prev.nodes,
+        edges: prev.edges,
+        history: newHistory,
+        future: [...state.future, snap(state)],
+      };
+    }),
+
+  redo: () =>
+    set((state) => {
+      if (state.future.length === 0) return state;
+      const next = state.future[state.future.length - 1];
+      const newFuture = state.future.slice(0, -1);
+      return {
+        nodes: next.nodes,
+        edges: next.edges,
+        history: [...state.history, snap(state)],
+        future: newFuture,
+      };
+    }),
 
   toJSON: () => {
     const { nodes, edges } = get();
@@ -260,9 +347,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       },
     }));
 
-    // Drop edges whose endpoints don't exist in the loaded node set and drop
-    // self-loops — both are normally impossible but can creep in from hand-
-    // edited save files or old versions of the schema.
     const nodeIds = new Set(nodes.map((n) => n.id));
     const edges = parsed.edges.filter(
       (e) =>
@@ -281,8 +365,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       .reduce((a, b) => Math.max(a, b), 0);
     edgeCounter = maxEdgeId + 1;
 
-    set({ nodes, edges });
+    // Loading a graph is structural enough to warrant an undo entry —
+    // users often want to Ctrl+Z their way back from an accidental load.
+    set((state) => ({ ...pushHistory(state), nodes, edges }));
   },
 
-  reset: () => set({ nodes: [], edges: [] }),
+  reset: () =>
+    set((state) => ({ ...pushHistory(state), nodes: [], edges: [] })),
 }));

@@ -51,7 +51,8 @@ html, body, #root {
   font-size: 12px;
   cursor: pointer;
 }
-.toolbar button:hover { background: #242c3c; }
+.toolbar button:hover:not(:disabled) { background: #242c3c; }
+.toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
 .toolbar button.primary {
   background: var(--accent);
   border-color: var(--accent);
