@@ -31,10 +31,11 @@ function Canvas() {
   const canUndo = useGraphStore((s) => s.history.length > 0);
   const canRedo = useGraphStore((s) => s.future.length > 0);
 
-  const onLayout = useCallback(() => {
+  const onLayout = useCallback(async () => {
     const { nodes: n, edges: e } = useGraphStore.getState();
     if (n.length === 0) return;
-    applyLayout(computeLayout(n, e));
+    const positions = await computeLayout(n, e);
+    applyLayout(positions);
   }, [applyLayout]);
 
   const openSettings = useSettingsStore((s) => s.open);
