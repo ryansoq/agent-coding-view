@@ -352,6 +352,146 @@ try {
     failures++;
   }
 
+  // 11. Mocked Anthropic API — intercept the network call and return a
+  // canned SSE response, then click Generate and verify the streamed body
+  // lands in the block. Exercises llm.ts's stream handling and
+  // extractCodeBlock end-to-end without needing a real API key.
+  log('\n=== 11. mocked Anthropic streaming Generate ===');
+
+  // Pre-seed zustand persist storage so Inspector sees a non-empty API key.
+  const mockedPage = await ctx.newPage();
+  await mockedPage.addInitScript(() => {
+    localStorage.setItem(
+      'agent-coding-view:settings',
+      JSON.stringify({
+        state: {
+          apiKey: 'sk-ant-mock-e2e-key',
+          model: 'claude-opus-4-6',
+          language: 'typescript',
+        },
+        version: 0,
+      }),
+    );
+  });
+  mockedPage.on('pageerror', (e) => errors.push(`mocked pageerror: ${e.message}`));
+  mockedPage.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`mocked console.error: ${m.text()}`);
+  });
+
+  // Canned SSE body that the Anthropic TypeScript SDK's streaming parser
+  // will unfold into text deltas, then finalMessage(). The body the LLM
+  // "returns" is `return 42;` wrapped in a fenced code block.
+  const sseBody = [
+    'event: message_start',
+    `data: ${JSON.stringify({
+      type: 'message_start',
+      message: {
+        id: 'msg_mock',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-opus-4-6',
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 0 },
+      },
+    })}`,
+    '',
+    'event: content_block_start',
+    `data: ${JSON.stringify({
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    })}`,
+    '',
+    'event: content_block_delta',
+    `data: ${JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: '```js\n' },
+    })}`,
+    '',
+    'event: content_block_delta',
+    `data: ${JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: 'return 42;\n' },
+    })}`,
+    '',
+    'event: content_block_delta',
+    `data: ${JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: '```' },
+    })}`,
+    '',
+    'event: content_block_stop',
+    `data: ${JSON.stringify({ type: 'content_block_stop', index: 0 })}`,
+    '',
+    'event: message_delta',
+    `data: ${JSON.stringify({
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn', stop_sequence: null },
+      usage: { output_tokens: 5 },
+    })}`,
+    '',
+    'event: message_stop',
+    `data: ${JSON.stringify({ type: 'message_stop' })}`,
+    '',
+    '',
+  ].join('\n');
+
+  let intercepted = 0;
+  await mockedPage.route('https://api.anthropic.com/**', async (route) => {
+    intercepted++;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      headers: {
+        'cache-control': 'no-cache',
+        'access-control-allow-origin': '*',
+      },
+      body: sseBody,
+    });
+  });
+
+  await mockedPage.goto(vite.url, { waitUntil: 'networkidle' });
+  await mockedPage.waitForSelector('.react-flow__node');
+
+  // Pick parseInput (SDD seed) and click Generate.
+  const mockNodes = mockedPage.locator('.react-flow__node');
+  const mockCount = await mockNodes.count();
+  let parseIdx = -1;
+  for (let i = 0; i < mockCount; i++) {
+    const val = await mockNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'parseInput') { parseIdx = i; break; }
+  }
+  check('found parseInput on canvas', parseIdx >= 0);
+  if (parseIdx >= 0) {
+    await mockNodes.nth(parseIdx).locator('.fblock__body').click();
+    await mockedPage.waitForTimeout(200);
+    await mockedPage.locator('.inspector button.primary', { hasText: 'Generate' }).click();
+    // Give the SDK time to parse SSE + update body.
+    try {
+      await mockedPage.waitForFunction(
+        () => document.querySelector('.body-view')?.textContent?.includes('return 42;'),
+        { timeout: 8000 },
+      );
+      check('mocked body streamed into block', true);
+    } catch {
+      const bodyText = await mockedPage.locator('.body-view').first().textContent();
+      check(
+        'mocked body streamed into block',
+        false,
+        `body-view text was: "${(bodyText || '').slice(0, 200)}"`,
+      );
+    }
+    check('anthropic endpoint was hit at least once', intercepted >= 1, `count=${intercepted}`);
+  }
+
+  await mockedPage.unroute('https://api.anthropic.com/**');
+  await mockedPage.close();
+
   log('\n=== console/page errors during run ===');
   if (errors.length === 0) {
     log('  ✓ no console or page errors');
