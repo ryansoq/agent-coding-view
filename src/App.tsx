@@ -13,6 +13,7 @@ import { Inspector } from './Inspector';
 import { SettingsModal } from './SettingsModal';
 import { useSettingsStore } from './settingsStore';
 import { computeLayout } from './layout';
+import { exportGraph } from './exporter';
 
 function Canvas() {
   const nodes = useGraphStore((s) => s.nodes);
@@ -37,6 +38,24 @@ function Canvas() {
     const positions = await computeLayout(n, e);
     applyLayout(positions);
   }, [applyLayout]);
+
+  const onExport = useCallback(() => {
+    const { nodes: n, edges: e } = useGraphStore.getState();
+    const { language } = useSettingsStore.getState();
+    if (n.length === 0) return;
+    try {
+      const { filename, content } = exportGraph(n, e, language, language);
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Export failed: ${(err as Error).message}`);
+    }
+  }, []);
 
   const openSettings = useSettingsStore((s) => s.open);
 
@@ -105,6 +124,7 @@ function Canvas() {
         <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl/Cmd+Z)">Undo</button>
         <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z / Ctrl+Y)">Redo</button>
         <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
+        <button onClick={onExport} title="Export all blocks of the default language as one source file">Export</button>
         <button onClick={onSave}>Save JSON</button>
         <button onClick={onLoad}>Load JSON</button>
         <button onClick={reset}>Clear</button>
