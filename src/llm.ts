@@ -54,7 +54,7 @@ Rules:
 - Never invent external dependencies that aren't obviously standard library${tddNote}`;
 }
 
-function buildUserPrompt(input: GenerateInput): string {
+export function buildUserPrompt(input: GenerateInput): string {
   const { block, neighbors } = input;
   const parts: string[] = [];
 
@@ -75,6 +75,17 @@ function buildUserPrompt(input: GenerateInput): string {
     for (const n of neighbors) {
       parts.push(`  [${n.direction}] ${n.name}: ${n.signature}`);
     }
+  }
+
+  if (block.scope.length > 0) {
+    parts.push(
+      '',
+      'Scope constraints — this block is restricted to these file globs:',
+    );
+    for (const g of block.scope) parts.push(`  - ${g}`);
+    parts.push(
+      'Only use identifiers from the standard library, the neighbor functions listed above, or things declared inside these globs. Do NOT import from paths outside this scope.',
+    );
   }
 
   if (input.previousAttempt) {
