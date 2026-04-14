@@ -8,6 +8,11 @@ export type BlockStatus =
   | 'passing'
   | 'failing';
 
+export interface TestCounts {
+  passed: number;
+  total: number;
+}
+
 export interface FunctionBlockData {
   name: string;
   signature: string;
@@ -18,6 +23,8 @@ export interface FunctionBlockData {
   body: string;
   status: BlockStatus;
   language: string;
+  /** Last test run summary. Cleared when the body is regenerated. */
+  testCounts?: TestCounts;
 }
 
 export const defaultBlockData = (name: string): FunctionBlockData => ({

@@ -116,7 +116,7 @@ export function Inspector() {
     clearIterationInfoTimer();
     setIterationInfo(null);
     userAborted.current.aborted = false;
-    patch(selected.id, { body: '', status: 'generating' });
+    patch(selected.id, { body: '', status: 'generating', testCounts: undefined });
 
     const handle = generateBody(
       apiKey,
@@ -175,10 +175,15 @@ export function Inspector() {
     setLastResult(result);
 
     if (result.status === 'done') {
-      const allOk = result.results.length > 0 && result.results.every((r) => r.ok);
-      patch(selected.id, { status: allOk ? 'passing' : 'failing' });
+      const passed = result.results.filter((r) => r.ok).length;
+      const total = result.results.length;
+      const allOk = total > 0 && passed === total;
+      patch(selected.id, {
+        status: allOk ? 'passing' : 'failing',
+        testCounts: { passed, total },
+      });
     } else {
-      patch(selected.id, { status: 'failing' });
+      patch(selected.id, { status: 'failing', testCounts: { passed: 0, total: 0 } });
     }
   };
 
@@ -203,7 +208,7 @@ export function Inspector() {
       if (!live) return;
 
       setIterationInfo(`Auto TDD iteration ${i + 1}/${MAX_TDD_ITERATIONS} — generating…`);
-      patch(selected.id, { body: '', status: 'generating' });
+      patch(selected.id, { body: '', status: 'generating', testCounts: undefined });
 
       let body: string;
       try {
@@ -260,10 +265,19 @@ export function Inspector() {
       }
       setLastResult(result);
 
-      if (result.status === 'done' && result.results.length > 0 && result.results.every((r) => r.ok)) {
-        patch(selected.id, { status: 'passing' });
-        flashIterationInfo(`Auto TDD passed on iteration ${i + 1}.`);
-        return;
+      if (result.status === 'done') {
+        const passed = result.results.filter((r) => r.ok).length;
+        const total = result.results.length;
+        if (total > 0 && passed === total) {
+          patch(selected.id, {
+            status: 'passing',
+            testCounts: { passed, total },
+          });
+          flashIterationInfo(`Auto TDD passed on iteration ${i + 1}.`);
+          return;
+        }
+        // Not all green — record counts so the card shows progress, then iterate.
+        patch(selected.id, { testCounts: { passed, total } });
       }
 
       prevBody = body;

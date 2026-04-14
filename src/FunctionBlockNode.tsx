@@ -70,7 +70,10 @@ function FunctionBlockNodeImpl({ id, data, selected }: NodeProps<FunctionBlockDa
       </div>
       <div className="fblock__footer">
         <span className={`status-dot ${data.status}`} />
-        <span>{data.status}</span>
+        <span>
+          {data.status}
+          {data.testCounts && ` ${data.testCounts.passed}/${data.testCounts.total}`}
+        </span>
         <span className="lang-chip" title={data.language ? 'block language' : 'inherited from global'}>
           {labelFor(effectiveLanguage)}{!data.language && ' ·'}
         </span>

@@ -103,6 +103,16 @@ try {
   const passingBlock = await page.locator('.fblock.status-passing').count();
   check('validate block gets status-passing class', passingBlock >= 1, `saw ${passingBlock}`);
 
+  const validateFooterText = await page
+    .locator('.fblock.status-passing .fblock__footer')
+    .first()
+    .textContent();
+  check(
+    'card footer shows 3/3 test count',
+    validateFooterText?.includes('3/3') ?? false,
+    `footer: "${validateFooterText}"`,
+  );
+
   // 4. Break the body → run tests → expect red
   log('\n=== 4. break body, expect red ===');
   const testsBox = page.locator('.inspector textarea').first();
