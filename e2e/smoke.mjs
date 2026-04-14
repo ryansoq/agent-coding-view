@@ -456,6 +456,68 @@ try {
     check('export filename ends in .js', name.endsWith('.js'), `filename: ${name}`);
   }
 
+  // 9e. Issues modal — the seed graph is clean (no failing tests, no
+  // cycles, no duplicate names, all TDD blocks have tests), so the
+  // count should be zero and the modal should show "No issues found".
+  // Then duplicate validate to create a name collision and verify the
+  // count jumps to 2 warnings.
+  log('\n=== 9e. issues modal ===');
+  const cleanBtn = page.locator('button', { hasText: 'Issues' });
+  const cleanLabel = await cleanBtn.first().textContent();
+  check('Issues button has no count for clean seed graph', cleanLabel?.trim() === 'Issues', `label: "${cleanLabel}"`);
+  await cleanBtn.first().click();
+  await page.waitForSelector('.modal', { timeout: 2000 });
+  const emptyMsg = await page.locator('.issues-empty__title').count();
+  check('modal shows empty state for clean graph', emptyMsg === 1);
+  // Close modal
+  await page.locator('.modal .icon-btn').click();
+  await page.waitForTimeout(150);
+
+  // Now introduce a problem: duplicate validate to create a name collision
+  const issuesNodes = page.locator('.react-flow__node');
+  const issuesCount = await issuesNodes.count();
+  let validIdxIssues = -1;
+  for (let i = 0; i < issuesCount; i++) {
+    const val = await issuesNodes.nth(i).locator('.fblock__name').first().textContent();
+    if (val?.trim() === 'validate') { validIdxIssues = i; break; }
+  }
+  if (validIdxIssues >= 0) {
+    await issuesNodes.nth(validIdxIssues).locator('.fblock__body').click();
+    await page.waitForTimeout(150);
+    await page.getByRole('button', { name: 'Duplicate' }).click();
+    await page.waitForTimeout(150);
+    // The clone is named "validate_copy", not "validate" — rename it to
+    // force a collision.
+    const nameInput = page.locator('.inspector input.field__input').first();
+    await nameInput.fill('validate');
+    await page.waitForTimeout(200);
+  }
+
+  // Click the toolbar button — it should now show a count
+  const dirtyLabel = await page.locator('button', { hasText: 'Issues' }).first().textContent();
+  check('Issues button shows non-zero count after collision', /Issues\s*\(\d+\)/.test(dirtyLabel || ''), `label: "${dirtyLabel}"`);
+  await page.locator('button', { hasText: 'Issues' }).first().click();
+  await page.waitForSelector('.modal', { timeout: 2000 });
+  const warnRows = await page.locator('.issue-row--warning').count();
+  check('two warnings for duplicate name', warnRows === 2, `got ${warnRows}`);
+  // Click the first warning — should select that block and close the modal
+  await page.locator('.issue-row--warning').first().click();
+  await page.waitForTimeout(200);
+  const modalGone = await page.locator('.modal').count();
+  check('modal closes after clicking an issue', modalGone === 0);
+  const inspectorAfter = await page.locator('.inspector__title').textContent();
+  check(
+    'clicking issue selects the offending block',
+    inspectorAfter === 'validate',
+    `title: ${inspectorAfter}`,
+  );
+
+  // Clean up — undo the duplicate+rename so later sections still see
+  // the seed graph. Undo once for the duplicate action; the rename was
+  // a patchBlock so it's not undoable.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(150);
+
   // 10. Save / Load JSON round-trip
   log('\n=== 10. save/load JSON round-trip ===');
   try {

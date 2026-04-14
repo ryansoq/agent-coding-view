@@ -34,6 +34,7 @@ interface GraphState {
   addBlock: (at?: { x: number; y: number }) => void;
   deleteSelected: () => void;
   duplicateBlock: (id: string) => void;
+  selectOnly: (id: string) => void;
   applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
   patchBlock: (id: string, patch: Partial<FunctionBlockData>) => void;
   appendBlockBody: (id: string, delta: string) => void;
@@ -271,6 +272,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       nodes: state.nodes.map((n) =>
         positions[n.id] ? { ...n, position: positions[n.id] } : n,
       ),
+    })),
+
+  // Selection-only change. Doesn't push history — consistent with drag/click
+  // selection which also doesn't snapshot.
+  selectOnly: (id) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: n.id === id })),
     })),
 
   // patchBlock, appendBlockBody, resetBlockBody are "live" fine-grained

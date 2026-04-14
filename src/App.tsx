@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -14,6 +14,8 @@ import { SettingsModal } from './SettingsModal';
 import { useSettingsStore } from './settingsStore';
 import { computeLayout } from './layout';
 import { exportGraph } from './exporter';
+import { IssuesModal } from './IssuesModal';
+import { countIssues } from './validation';
 
 function Canvas() {
   const nodes = useGraphStore((s) => s.nodes);
@@ -31,6 +33,12 @@ function Canvas() {
   const applyLayout = useGraphStore((s) => s.applyLayout);
   const canUndo = useGraphStore((s) => s.history.length > 0);
   const canRedo = useGraphStore((s) => s.future.length > 0);
+  // countIssues returns a fresh object so we can't inline it in the selector
+  // without triggering a re-render every tick. useMemo on nodes/edges refs
+  // keeps recomputation cheap.
+  const issueCounts = useMemo(() => countIssues(nodes, edges), [nodes, edges]);
+
+  const [issuesOpen, setIssuesOpen] = useState(false);
 
   const onLayout = useCallback(async () => {
     const { nodes: n, edges: e } = useGraphStore.getState();
@@ -125,6 +133,13 @@ function Canvas() {
         <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z / Ctrl+Y)">Redo</button>
         <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
         <button onClick={onExport} title="Export all blocks of the default language as one source file">Export</button>
+        <button
+          onClick={() => setIssuesOpen(true)}
+          className={issueCounts.errors > 0 ? 'issues-btn issues-btn--has-errors' : issueCounts.warnings > 0 ? 'issues-btn issues-btn--has-warnings' : 'issues-btn'}
+          title="Show all graph issues"
+        >
+          Issues{issueCounts.total > 0 ? ` (${issueCounts.total})` : ''}
+        </button>
         <button onClick={onSave}>Save JSON</button>
         <button onClick={onLoad}>Load JSON</button>
         <button onClick={reset}>Clear</button>
@@ -167,6 +182,7 @@ function Canvas() {
         <Inspector />
       </div>
       <SettingsModal />
+      <IssuesModal isOpen={issuesOpen} onClose={() => setIssuesOpen(false)} />
     </div>
   );
 }
