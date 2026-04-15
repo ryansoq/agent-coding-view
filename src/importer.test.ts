@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findJsFunctions, importJs, findPyFunctions, importPy, importSource } from './importer';
+import { findJsFunctions, importJs, findPyFunctions, importPy, importSource, inferCallEdges } from './importer';
 
 describe('findJsFunctions', () => {
   it('empty source yields no functions', () => {
@@ -247,6 +247,82 @@ describe('importSource', () => {
   it('case-insensitive extension match', () => {
     const result = importSource('def foo():\n    pass', 'GRAPH.PY');
     expect(result.nodes[0].data.language).toBe('python');
+  });
+});
+
+describe('inferCallEdges', () => {
+  it('empty node list yields no edges', () => {
+    expect(inferCallEdges([])).toEqual([]);
+  });
+
+  it('finds a single caller → callee edge (callee is upstream)', () => {
+    const result = importJs(`function double(x) { return x * 2; }
+function quad(x) { return double(double(x)); }`);
+    expect(result.edges).toHaveLength(1);
+    // quad calls double → double is upstream, quad is downstream.
+    const [e] = result.edges;
+    const sourceNode = result.nodes.find((n) => n.id === e.source);
+    const targetNode = result.nodes.find((n) => n.id === e.target);
+    expect(sourceNode?.data.name).toBe('double');
+    expect(targetNode?.data.name).toBe('quad');
+  });
+
+  it('deduplicates when a body calls the same name multiple times', () => {
+    // quad body calls double twice; should still produce only one edge.
+    const result = importJs(`function double(x) { return x * 2; }
+function quad(x) { return double(double(x)); }`);
+    expect(result.edges).toHaveLength(1);
+  });
+
+  it('ignores self-references (recursion)', () => {
+    const result = importJs(`function fact(n) { return n <= 1 ? 1 : n * fact(n - 1); }`);
+    expect(result.edges).toEqual([]);
+  });
+
+  it('uses word boundaries so `foo` does not match `foobar`', () => {
+    const result = importJs(
+      `function foo() { return 1; }
+function foobar() { return 2; }
+function caller() { return foo() + foobar(); }`,
+    );
+    // caller should depend on BOTH foo and foobar (2 distinct edges)
+    const callerEdges = result.edges.filter((e) => {
+      const target = result.nodes.find((n) => n.id === e.target);
+      return target?.data.name === 'caller';
+    });
+    expect(callerEdges).toHaveLength(2);
+  });
+
+  it('chains: a → b → c, each calling the one before', () => {
+    const result = importJs(
+      `function a() { return 1; }
+function b() { return a() + 1; }
+function c() { return b() + 1; }`,
+    );
+    expect(result.edges).toHaveLength(2);
+    const byName = Object.fromEntries(result.nodes.map((n) => [n.data.name, n.id]));
+    expect(result.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: byName.a, target: byName.b }),
+        expect.objectContaining({ source: byName.b, target: byName.c }),
+      ]),
+    );
+  });
+
+  it('works for Python too', () => {
+    const result = importPy(
+      `def helper(x):
+    return x * 2
+
+def main():
+    return helper(5)`,
+    );
+    expect(result.edges).toHaveLength(1);
+    const [e] = result.edges;
+    const source = result.nodes.find((n) => n.id === e.source);
+    const target = result.nodes.find((n) => n.id === e.target);
+    expect(source?.data.name).toBe('helper');
+    expect(target?.data.name).toBe('main');
   });
 });
 

@@ -143,6 +143,44 @@ export interface ImportResult {
   edges: Edge[];
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Naive call-graph inference. For every block, scan its body for
+ * `otherName(` patterns and add an edge `other → this` (other is
+ * upstream because this block depends on it).
+ *
+ * String-literal and comment detection is deliberately skipped here —
+ * a false positive on a word inside a comment is better than missing
+ * a real call for MVP. Self-references (recursive calls) are ignored.
+ */
+export function inferCallEdges(nodes: FBlockNode[]): Edge[] {
+  const edges: Edge[] = [];
+  let n = 1;
+  const seen = new Set<string>();
+  for (const caller of nodes) {
+    const body = caller.data.body;
+    if (!body) continue;
+    for (const callee of nodes) {
+      if (callee.id === caller.id) continue;
+      if (!callee.data.name) continue;
+      const re = new RegExp(`\\b${escapeRegex(callee.data.name)}\\s*\\(`);
+      if (!re.test(body)) continue;
+      const key = `${callee.id}->${caller.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({
+        id: `e${n++}`,
+        source: callee.id,
+        target: caller.id,
+      });
+    }
+  }
+  return edges;
+}
+
 /**
  * Build a graph from parsed JS source. One block per top-level function,
  * laid out in a column. No edges — call-graph reconstruction would need
@@ -163,7 +201,7 @@ export function importJs(source: string, language = 'javascript'): ImportResult 
       status: 'specd',
     },
   }));
-  return { nodes, edges: [] };
+  return { nodes, edges: inferCallEdges(nodes) };
 }
 
 /**
@@ -246,7 +284,7 @@ export function importPy(source: string): ImportResult {
       status: 'specd',
     },
   }));
-  return { nodes, edges: [] };
+  return { nodes, edges: inferCallEdges(nodes) };
 }
 
 /**

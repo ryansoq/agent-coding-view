@@ -649,6 +649,24 @@ try {
     );
   }
 
+  // 9f.1 — importing a multi-function file with call sites should infer
+  // edges automatically.
+  log('\n=== 9f.1 import infers call edges ===');
+  const inferGraph = `function helper(x) { return x + 1; }
+function main(x) { return helper(helper(x)); }
+`;
+  const inferTmp = pathMod2.join(os2.tmpdir(), `e2e-infer-${Date.now()}.js`);
+  await fs2.writeFile(inferTmp, inferGraph);
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.waitForTimeout(150);
+  await page.locator('input[type="file"]').nth(1).setInputFiles(inferTmp);
+  await page.waitForTimeout(300);
+  const inferNodes = (await page.$$('.react-flow__node')).length;
+  const inferEdges = (await page.$$('.react-flow__edge')).length;
+  check('infer: imported 2 nodes', inferNodes === 2, `${inferNodes}`);
+  check('infer: 1 edge auto-created (helper → main)', inferEdges === 1, `${inferEdges}`);
+  await fs2.unlink(inferTmp).catch(() => {});
+
   await clearGraphAndReload(page, vite.url);
 
   // 9e. Issues modal — the seed graph is clean (no failing tests, no
