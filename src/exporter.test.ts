@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { Edge } from 'reactflow';
-import { topoSort, exportToJs, exportToPython, exportGraph, exportAllLanguages } from './exporter';
+import {
+  topoSort,
+  exportToJs,
+  exportToPython,
+  exportGraph,
+  exportAllLanguages,
+  exportToMermaid,
+} from './exporter';
 import { FBlockNode } from './store';
 import { defaultBlockData, FunctionBlockData } from './types';
 
@@ -256,5 +263,56 @@ describe('exportAllLanguages', () => {
     ];
     const results = exportAllLanguages(nodes, [], 'javascript');
     expect(results.map((r) => r.filename.match(/\.(\w+)$/)?.[1])).toEqual(['js', 'ts', 'py']);
+  });
+});
+
+describe('exportToMermaid', () => {
+  it('empty graph still has a flowchart header and class defs', () => {
+    const out = exportToMermaid([], []);
+    expect(out).toMatch(/^flowchart LR/);
+    // Class defs are always emitted so themed output stays consistent.
+    expect(out).toContain('classDef status_passing');
+    expect(out).toContain('classDef status_failing');
+  });
+
+  it('emits one node line per block with a status class', () => {
+    const nodes = [
+      node('a', { name: 'parseInput', status: 'passing' }),
+      node('b', { name: 'validate', status: 'failing' }),
+    ];
+    const out = exportToMermaid(nodes, []);
+    expect(out).toContain('parseInput["parseInput"]:::status_passing');
+    expect(out).toContain('validate["validate"]:::status_failing');
+  });
+
+  it('emits edge lines only for edges whose endpoints exist', () => {
+    const nodes = [node('a', { name: 'x' }), node('b', { name: 'y' })];
+    const edges = [edge('a', 'b'), edge('a', 'ghost')];
+    const out = exportToMermaid(nodes, edges);
+    expect(out).toContain('x --> y');
+    expect(out).not.toContain('ghost');
+  });
+
+  it('sanitizes non-word chars in block names', () => {
+    const nodes = [node('a', { name: 'foo/bar' }), node('b', { name: 'baz.qux' })];
+    const out = exportToMermaid(nodes, []);
+    // `/` and `.` become `_`, but the label keeps the original name.
+    expect(out).toContain('foo_bar["foo/bar"]');
+    expect(out).toContain('baz_qux["baz.qux"]');
+  });
+
+  it('dedupes sanitized ids that collide', () => {
+    // Two different names collapse to the same sanitized id `foo_bar`.
+    const nodes = [node('a', { name: 'foo/bar' }), node('b', { name: 'foo.bar' })];
+    const out = exportToMermaid(nodes, []);
+    // First one wins `foo_bar`, second gets a numeric suffix.
+    expect(out).toContain('foo_bar["foo/bar"]');
+    expect(out).toContain('foo_bar_2["foo.bar"]');
+  });
+
+  it('prefixes ids that begin with a digit', () => {
+    const nodes = [node('a', { name: '1stThing' })];
+    const out = exportToMermaid(nodes, []);
+    expect(out).toContain('_1stThing["1stThing"]');
   });
 });

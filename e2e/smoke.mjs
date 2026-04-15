@@ -754,6 +754,25 @@ try {
   check('export all includes a .js file', filenames.some((n) => n.endsWith('.js')), filenames.join(', '));
   check('export all includes a .py file', filenames.some((n) => n.endsWith('.py')), filenames.join(', '));
 
+  // 9d2. Mermaid export — download a .mmd file containing the seed graph
+  // as a flowchart. Clipboard write is best-effort so we only check the
+  // download, which is the fallback path the feature guarantees.
+  log('\n=== 9d2. Mermaid export ===');
+  const [mermaidDownload] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.getByRole('button', { name: 'Mermaid', exact: true }).click(),
+  ]);
+  const mmdPath = await mermaidDownload.path();
+  check('Mermaid download triggered', !!mmdPath);
+  check('Mermaid file ends in .mmd', mermaidDownload.suggestedFilename().endsWith('.mmd'));
+  if (mmdPath) {
+    const { readFileSync } = await import('node:fs');
+    const mmd = readFileSync(mmdPath, 'utf8');
+    check('Mermaid output starts with flowchart LR', mmd.startsWith('flowchart LR'));
+    check('Mermaid output contains parseInput block', mmd.includes('parseInput'));
+    check('Mermaid output has a status class', /:::status_/.test(mmd));
+  }
+
   // 9f. Import JS — round-trip: export the seed graph, clear, import the
   // exported file, verify validate is back as a block.
   log('\n=== 9f. import JS round-trip ===');

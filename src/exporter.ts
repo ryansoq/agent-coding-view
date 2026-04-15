@@ -141,3 +141,49 @@ export function exportAllLanguages(
   }
   return out;
 }
+
+/**
+ * Render the graph as a Mermaid `flowchart LR`. Nodes carry status-based
+ * CSS classes so downstream Mermaid themes can color them. Unlike the
+ * source exports this is stable regardless of language and is meant for
+ * pasting into markdown / docs / PR descriptions.
+ *
+ * Block names are sanitized to a Mermaid-safe id (letters/digits/underscore).
+ * Collisions from sanitization get numeric suffixes so no two blocks share
+ * an id — `foo/bar` and `foo.bar` both collapse to `foo_bar` otherwise.
+ */
+export function exportToMermaid(nodes: FBlockNode[], edges: Edge[]): string {
+  const lines: string[] = ['flowchart LR'];
+  // Sanitize: keep only word chars, then dedupe against prior ids.
+  const safeIds = new Map<string, string>();
+  const used = new Set<string>();
+  for (const n of nodes) {
+    let base = (n.data.name || n.id).replace(/[^\w]/g, '_') || 'node';
+    if (/^\d/.test(base)) base = '_' + base;
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate)) candidate = `${base}_${suffix++}`;
+    used.add(candidate);
+    safeIds.set(n.id, candidate);
+  }
+  for (const n of nodes) {
+    const id = safeIds.get(n.id)!;
+    // Escape `"` inside labels so the bracket form stays valid Mermaid.
+    const label = (n.data.name || '(unnamed)').replace(/"/g, '#quot;');
+    lines.push(`  ${id}["${label}"]:::status_${n.data.status}`);
+  }
+  const idSet = new Set(nodes.map((n) => n.id));
+  for (const e of edges) {
+    if (!idSet.has(e.source) || !idSet.has(e.target)) continue;
+    lines.push(`  ${safeIds.get(e.source)} --> ${safeIds.get(e.target)}`);
+  }
+  // Class defs — Mermaid themes can override these, we just pick colors
+  // that echo the in-app palette.
+  lines.push('  classDef status_passing fill:#3ecf8e,stroke:#2a9d6f,color:#0f1115');
+  lines.push('  classDef status_failing fill:#ff5d73,stroke:#c03b50,color:#0f1115');
+  lines.push('  classDef status_generating fill:#ffd166,stroke:#c9a13f,color:#0f1115');
+  lines.push('  classDef status_running_tests fill:#ffd166,stroke:#c9a13f,color:#0f1115');
+  lines.push('  classDef status_specd fill:#5b8cff,stroke:#3a5fb0,color:#ffffff');
+  lines.push('  classDef status_stub fill:#4a556e,stroke:#2f3647,color:#ffffff');
+  return lines.join('\n') + '\n';
+}

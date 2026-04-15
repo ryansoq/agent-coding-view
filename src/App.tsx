@@ -13,7 +13,7 @@ import { Inspector } from './Inspector';
 import { SettingsModal } from './SettingsModal';
 import { useSettingsStore } from './settingsStore';
 import { computeLayout } from './layout';
-import { exportGraph, exportAllLanguages } from './exporter';
+import { exportGraph, exportAllLanguages, exportToMermaid } from './exporter';
 import { importSource } from './importer';
 import { IssuesModal } from './IssuesModal';
 import { TemplatesModal } from './TemplatesModal';
@@ -167,6 +167,24 @@ function Canvas() {
     } catch (err) {
       alert(`Export failed: ${(err as Error).message}`);
     }
+  }, []);
+
+  const onExportMermaid = useCallback(async () => {
+    const { nodes: n, edges: e } = useGraphStore.getState();
+    if (n.length === 0) {
+      alert('No blocks to export.');
+      return;
+    }
+    const text = exportToMermaid(n, e);
+    // Copy to clipboard when available so users can paste straight into
+    // a PR description; always offer the download as a fallback since
+    // clipboard access can fail under some contexts (no https, denied).
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* noop — user still gets the file */
+    }
+    downloadText(`graph-${Date.now()}.mmd`, text);
   }, []);
 
   const onExportAll = useCallback(async () => {
@@ -371,6 +389,7 @@ function Canvas() {
         <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
         <button onClick={onExport} title="Export all blocks of the default language as one source file">Export</button>
         <button onClick={onExportAll} title="Export every language group as a separate file">Export all</button>
+        <button onClick={onExportMermaid} title="Copy a Mermaid flowchart of the graph to clipboard + download">Mermaid</button>
         <button onClick={onImportClick} title="Import a .js or .py file — each top-level function becomes a block">Import</button>
         <button
           onClick={() => setIssuesOpen(true)}
