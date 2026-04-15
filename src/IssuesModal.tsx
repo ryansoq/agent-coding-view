@@ -63,6 +63,16 @@ export function IssuesModal({ isOpen, onClose }: Props) {
               <span className="graph-stats__metric">
                 <span className="graph-stats__num">{stats.edges}</span> edges
               </span>
+              {stats.blocks > 0 && (
+                <>
+                  <span className="graph-stats__metric">
+                    <span className="graph-stats__num">{stats.longestChain}</span> longest chain
+                  </span>
+                  <span className="graph-stats__metric">
+                    <span className="graph-stats__num">{stats.components}</span> component{stats.components === 1 ? '' : 's'}
+                  </span>
+                </>
+              )}
               {stats.passing > 0 && (
                 <span className="graph-stats__metric graph-stats__metric--pass">
                   <span className="graph-stats__num">{stats.passing}</span> passing

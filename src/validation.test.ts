@@ -17,6 +17,10 @@ function edge(source: string, target: string): Edge {
   return { id: `${source}-${target}`, source, target };
 }
 
+function mkEdge(source: string, target: string, id = `${source}-${target}`): Edge {
+  return { id, source, target };
+}
+
 describe('validateGraph', () => {
   it('empty graph has no issues', () => {
     expect(validateGraph([], [])).toEqual([]);
@@ -170,5 +174,63 @@ describe('computeStats', () => {
     const s = computeStats(blocks, []);
     expect(s.passing).toBe(2);
     expect(s.failing).toBe(1);
+  });
+
+  it('longestChain: empty graph is 0', () => {
+    expect(computeStats([], []).longestChain).toBe(0);
+  });
+
+  it('longestChain: isolated blocks are 1', () => {
+    const s = computeStats([node('a'), node('b'), node('c')], []);
+    expect(s.longestChain).toBe(1);
+  });
+
+  it('longestChain: linear chain a→b→c is 3', () => {
+    const nodes = [node('a'), node('b'), node('c')];
+    const edges = [mkEdge('a', 'b'), mkEdge('b', 'c')];
+    expect(computeStats(nodes, edges).longestChain).toBe(3);
+  });
+
+  it('longestChain: diamond takes the longer branch', () => {
+    // a → b → d (3)
+    //  \       /
+    //   → c →
+    const nodes = [node('a'), node('b'), node('c'), node('d')];
+    const edges = [mkEdge('a', 'b'), mkEdge('a', 'c'), mkEdge('b', 'd'), mkEdge('c', 'd')];
+    expect(computeStats(nodes, edges).longestChain).toBe(3);
+  });
+
+  it('components: three isolated blocks → 3 components', () => {
+    expect(computeStats([node('a'), node('b'), node('c')], []).components).toBe(3);
+  });
+
+  it('components: chain a→b→c → 1 component', () => {
+    const nodes = [node('a'), node('b'), node('c')];
+    const edges = [mkEdge('a', 'b'), mkEdge('b', 'c')];
+    expect(computeStats(nodes, edges).components).toBe(1);
+  });
+
+  it('components: two disjoint chains → 2 components', () => {
+    const nodes = [node('a'), node('b'), node('c'), node('d')];
+    const edges = [mkEdge('a', 'b'), mkEdge('c', 'd')];
+    expect(computeStats(nodes, edges).components).toBe(2);
+  });
+
+  it('components: edges are treated as undirected', () => {
+    // a → b ← c should still be 1 component
+    const nodes = [node('a'), node('b'), node('c')];
+    const edges = [mkEdge('a', 'b'), mkEdge('c', 'b')];
+    expect(computeStats(nodes, edges).components).toBe(1);
+  });
+
+  it('seed-shaped graph: parseInput→validate, parseInput→enrich, py_slug isolated', () => {
+    const nodes = [node('parseInput'), node('validate'), node('enrich'), node('py_slug')];
+    const edges = [
+      mkEdge('parseInput', 'validate'),
+      mkEdge('parseInput', 'enrich'),
+    ];
+    const s = computeStats(nodes, edges);
+    expect(s.longestChain).toBe(2); // parseInput → validate (or enrich)
+    expect(s.components).toBe(2); // connected trio + isolated py_slug
   });
 });
