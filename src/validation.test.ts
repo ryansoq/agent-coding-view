@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Edge } from 'reactflow';
-import { validateGraph, countIssues } from './validation';
+import { validateGraph, countIssues, computeStats } from './validation';
 import { FBlockNode } from './store';
 import { defaultBlockData, FunctionBlockData } from './types';
 
@@ -116,5 +116,59 @@ describe('countIssues', () => {
       status: 'specd',
     });
     expect(countIssues([a], [])).toEqual({ errors: 0, warnings: 0, infos: 0, total: 0 });
+  });
+});
+
+describe('computeStats', () => {
+  it('empty graph returns zeros', () => {
+    const s = computeStats([], []);
+    expect(s.blocks).toBe(0);
+    expect(s.edges).toBe(0);
+    expect(s.languages).toEqual({});
+    expect(s.modes).toEqual({});
+    expect(s.passing).toBe(0);
+    expect(s.failing).toBe(0);
+  });
+
+  it('counts blocks and edges', () => {
+    const a = node('a');
+    const b = node('b');
+    const s = computeStats([a, b], [{ id: 'e1', source: 'a', target: 'b' }]);
+    expect(s.blocks).toBe(2);
+    expect(s.edges).toBe(1);
+  });
+
+  it('tallies language distribution', () => {
+    const blocks = [
+      node('a', { language: 'javascript' }),
+      node('b', { language: 'javascript' }),
+      node('c', { language: 'python' }),
+      node('d', { language: '' }),
+    ];
+    const s = computeStats(blocks, []);
+    expect(s.languages).toEqual({ javascript: 2, python: 1, '(inherited)': 1 });
+  });
+
+  it('tallies mode distribution', () => {
+    const blocks = [
+      node('a', { mode: 'TDD' }),
+      node('b', { mode: 'TDD' }),
+      node('c', { mode: 'SDD' }),
+      node('d', { mode: 'manual' }),
+    ];
+    const s = computeStats(blocks, []);
+    expect(s.modes).toEqual({ TDD: 2, SDD: 1, manual: 1 });
+  });
+
+  it('counts passing and failing', () => {
+    const blocks = [
+      node('a', { status: 'passing' }),
+      node('b', { status: 'passing' }),
+      node('c', { status: 'failing' }),
+      node('d', { status: 'specd' }),
+    ];
+    const s = computeStats(blocks, []);
+    expect(s.passing).toBe(2);
+    expect(s.failing).toBe(1);
   });
 });

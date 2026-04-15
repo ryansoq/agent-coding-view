@@ -93,3 +93,40 @@ export function countIssues(nodes: FBlockNode[], edges: Edge[]) {
   }
   return { errors, warnings, infos, total: all.length };
 }
+
+export interface GraphStats {
+  blocks: number;
+  edges: number;
+  languages: Record<string, number>;
+  modes: Record<string, number>;
+  passing: number;
+  failing: number;
+}
+
+/**
+ * Read-only summary of the graph — counts of blocks, edges, per-language
+ * and per-mode distribution, and aggregate test pass/fail. Surfaces in
+ * the Issues modal header so you can see the shape of the graph at a
+ * glance without counting cards.
+ */
+export function computeStats(nodes: FBlockNode[], edges: Edge[]): GraphStats {
+  const languages: Record<string, number> = {};
+  const modes: Record<string, number> = {};
+  let passing = 0;
+  let failing = 0;
+  for (const n of nodes) {
+    const lang = n.data.language || '(inherited)';
+    languages[lang] = (languages[lang] ?? 0) + 1;
+    modes[n.data.mode] = (modes[n.data.mode] ?? 0) + 1;
+    if (n.data.status === 'passing') passing++;
+    else if (n.data.status === 'failing') failing++;
+  }
+  return {
+    blocks: nodes.length,
+    edges: edges.length,
+    languages,
+    modes,
+    passing,
+    failing,
+  };
+}

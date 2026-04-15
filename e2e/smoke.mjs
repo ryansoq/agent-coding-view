@@ -695,6 +695,9 @@ function main(x) { return helper(helper(x)); }
   await page.waitForSelector('.modal', { timeout: 2000 });
   const emptyMsg = await page.locator('.issues-empty__title').count();
   check('modal shows empty state for clean graph', emptyMsg === 1);
+  // Graph stats header should show the seed block count
+  const statsRow = (await page.locator('.graph-stats__row').textContent()) || '';
+  check('graph stats shows non-zero block count', /[1-9]/.test(statsRow), `text: "${statsRow.trim()}"`);
   // Close modal
   await page.locator('.modal .icon-btn').click();
   await page.waitForTimeout(150);

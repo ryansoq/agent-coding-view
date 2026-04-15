@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useGraphStore } from './store';
-import { validateGraph, Issue, IssueSeverity } from './validation';
+import { validateGraph, computeStats, Issue, IssueSeverity } from './validation';
 
 interface Props {
   isOpen: boolean;
@@ -27,6 +27,7 @@ export function IssuesModal({ isOpen, onClose }: Props) {
   const selectOnly = useGraphStore((s) => s.selectOnly);
 
   const issues = useMemo(() => validateGraph(nodes, edges), [nodes, edges]);
+  const stats = useMemo(() => computeStats(nodes, edges), [nodes, edges]);
 
   const grouped = useMemo(() => {
     const out: Record<IssueSeverity, Issue[]> = { error: [], warning: [], info: [] };
@@ -54,6 +55,40 @@ export function IssuesModal({ isOpen, onClose }: Props) {
           <button className="icon-btn" onClick={onClose} aria-label="Close">×</button>
         </div>
         <div className="modal__body">
+          <div className="graph-stats">
+            <div className="graph-stats__row">
+              <span className="graph-stats__metric">
+                <span className="graph-stats__num">{stats.blocks}</span> blocks
+              </span>
+              <span className="graph-stats__metric">
+                <span className="graph-stats__num">{stats.edges}</span> edges
+              </span>
+              {stats.passing > 0 && (
+                <span className="graph-stats__metric graph-stats__metric--pass">
+                  <span className="graph-stats__num">{stats.passing}</span> passing
+                </span>
+              )}
+              {stats.failing > 0 && (
+                <span className="graph-stats__metric graph-stats__metric--fail">
+                  <span className="graph-stats__num">{stats.failing}</span> failing
+                </span>
+              )}
+            </div>
+            {stats.blocks > 0 && (
+              <div className="graph-stats__chips">
+                {Object.entries(stats.languages).map(([lang, n]) => (
+                  <span key={`l-${lang}`} className="graph-stats__chip">
+                    {lang}: {n}
+                  </span>
+                ))}
+                {Object.entries(stats.modes).map(([mode, n]) => (
+                  <span key={`m-${mode}`} className="graph-stats__chip graph-stats__chip--mode">
+                    {mode}: {n}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
           {issues.length === 0 ? (
             <div className="issues-empty">
               <div className="issues-empty__title">✓ No issues found</div>
