@@ -55,6 +55,31 @@ describe('store — structural mutations', () => {
     expect(s.nodes[0].selected).toBe(false);
   });
 
+  it('duplicateBlock avoids _copy_copy on repeated duplication', () => {
+    state().addBlock({ x: 0, y: 0 });
+    const originalId = state().nodes[0].id;
+    state().patchBlock(originalId, { name: 'foo' });
+
+    // First duplication → foo_copy
+    state().duplicateBlock(originalId);
+    expect(state().nodes.map((n) => n.data.name)).toEqual(['foo', 'foo_copy']);
+
+    // Duplicating the clone should NOT produce foo_copy_copy
+    const cloneId = state().nodes[1].id;
+    state().duplicateBlock(cloneId);
+    const names = state().nodes.map((n) => n.data.name);
+    expect(names).toEqual(['foo', 'foo_copy', 'foo_copy2']);
+
+    // Duplicating the original again should pick foo_copy3 (foo_copy + foo_copy2 already taken)
+    state().duplicateBlock(originalId);
+    expect(state().nodes.map((n) => n.data.name)).toEqual([
+      'foo',
+      'foo_copy',
+      'foo_copy2',
+      'foo_copy3',
+    ]);
+  });
+
   it('onConnect rejects self-loops', () => {
     state().addBlock({ x: 0, y: 0 });
     const id = state().nodes[0].id;

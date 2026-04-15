@@ -71,6 +71,16 @@ export function IssuesModal({ isOpen, onClose }: Props) {
                   <span className="graph-stats__metric">
                     <span className="graph-stats__num">{stats.components}</span> component{stats.components === 1 ? '' : 's'}
                   </span>
+                  {stats.edges > 0 && (
+                    <>
+                      <span className="graph-stats__metric">
+                        <span className="graph-stats__num">{stats.maxFanOut}</span> max fan-out
+                      </span>
+                      <span className="graph-stats__metric">
+                        <span className="graph-stats__num">{stats.maxFanIn}</span> max fan-in
+                      </span>
+                    </>
+                  )}
                 </>
               )}
               {stats.passing > 0 && (

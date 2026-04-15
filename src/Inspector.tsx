@@ -27,7 +27,6 @@ export function Inspector() {
   const edges = useGraphStore((s) => s.edges);
   const patch = useGraphStore((s) => s.patchBlock);
   const appendBody = useGraphStore((s) => s.appendBlockBody);
-  const resetBody = useGraphStore((s) => s.resetBlockBody);
   const deleteSelected = useGraphStore((s) => s.deleteSelected);
   const duplicateBlock = useGraphStore((s) => s.duplicateBlock);
 
@@ -286,7 +285,6 @@ export function Inspector() {
       testHandle.current = null;
 
       if (userAborted.current.aborted) {
-        resetBody(selected.id);
         patch(selected.id, { body, status: 'specd' });
         flashIterationInfo('Auto TDD aborted.');
         return;
@@ -425,7 +423,7 @@ export function Inspector() {
               spellCheck={false}
             />
             <span className="field__hint">
-              Runtime provides <code>test()</code>, <code>expect()</code> with <code>toBe</code> / <code>toEqual</code> / <code>toThrow</code> / <code>toBeTruthy</code>.
+              Runtime provides <code>test()</code>, <code>expect()</code> with <code>toBe</code> / <code>toEqual</code> / <code>toThrow</code> / <code>toBeTruthy</code> / <code>toBeFalsy</code> / <code>toBeCloseTo</code>.
             </span>
           </label>
         ) : (

@@ -8,7 +8,7 @@ import { defaultBlockData } from './types';
  * unmatched. Skips JS string literals and `//` and `/* * /` comments so
  * brackets inside them don't confuse depth.
  */
-function skipBalanced(code: string, i: number): number {
+export function skipBalanced(code: string, i: number): number {
   const open = code[i];
   const close = open === '(' ? ')' : open === '{' ? '}' : open === '[' ? ']' : '';
   if (!close) return -1;
@@ -326,9 +326,9 @@ export function inferCallEdges(nodes: FBlockNode[]): Edge[] {
 
 /**
  * Build a graph from parsed JS source. One block per top-level function,
- * laid out in a column. No edges — call-graph reconstruction would need
- * semantic analysis to know which identifiers are calls vs variables, and
- * that's out of scope for the MVP.
+ * laid out in a column. Edges are inferred via `inferCallEdges` — a name
+ * match on string/comment-stripped bodies, good enough for MVP without a
+ * real semantic pass.
  */
 export function importJs(source: string, language = 'javascript'): ImportResult {
   const fns = findJsFunctions(source);

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { DevMode, FunctionBlockData } from './types';
+import { skipBalanced } from './importer';
 
 interface NeighborSignature {
   name: string;
@@ -119,35 +120,6 @@ function dedent(text: string): string {
   const minIndent = Math.min(...indents);
   if (minIndent === 0) return text;
   return lines.map((l) => l.slice(minIndent)).join('\n');
-}
-
-/**
- * Advance from `i` past a balanced pair opened by `code[i]`, where `code[i]`
- * is one of `(`, `{`, `[`. Returns the index AFTER the closing character, or
- * -1 if the bracket is unmatched. Skips string literals so brackets inside
- * `"a(b)"` don't affect depth.
- */
-function skipBalanced(code: string, i: number): number {
-  const open = code[i];
-  const close = open === '(' ? ')' : open === '{' ? '}' : open === '[' ? ']' : '';
-  if (!close) return -1;
-  let depth = 1;
-  let inString: false | string = false;
-  i++;
-  while (i < code.length && depth > 0) {
-    const ch = code[i];
-    if (inString) {
-      if (ch === '\\' && i + 1 < code.length) { i += 2; continue; }
-      if (ch === inString) inString = false;
-      i++;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') { inString = ch; i++; continue; }
-    if (ch === open) depth++;
-    else if (ch === close) depth--;
-    i++;
-  }
-  return depth === 0 ? i : -1;
 }
 
 /**

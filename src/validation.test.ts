@@ -232,5 +232,54 @@ describe('computeStats', () => {
     const s = computeStats(nodes, edges);
     expect(s.longestChain).toBe(2); // parseInput → validate (or enrich)
     expect(s.components).toBe(2); // connected trio + isolated py_slug
+    expect(s.maxFanOut).toBe(2); // parseInput has two outgoing edges
+    expect(s.maxFanIn).toBe(1); // validate and enrich each have one incoming
+  });
+
+  it('maxFanIn / maxFanOut: zero for an empty graph', () => {
+    const s = computeStats([], []);
+    expect(s.maxFanIn).toBe(0);
+    expect(s.maxFanOut).toBe(0);
+  });
+
+  it('maxFanIn / maxFanOut: zero when there are no edges', () => {
+    const s = computeStats([node('a'), node('b')], []);
+    expect(s.maxFanIn).toBe(0);
+    expect(s.maxFanOut).toBe(0);
+  });
+
+  it('maxFanIn picks up a block with many incoming edges', () => {
+    // hub receives from a, b, c, d
+    const nodes = [node('a'), node('b'), node('c'), node('d'), node('hub')];
+    const edges = [
+      mkEdge('a', 'hub'),
+      mkEdge('b', 'hub'),
+      mkEdge('c', 'hub'),
+      mkEdge('d', 'hub'),
+    ];
+    const s = computeStats(nodes, edges);
+    expect(s.maxFanIn).toBe(4);
+    expect(s.maxFanOut).toBe(1);
+  });
+
+  it('maxFanOut picks up a block with many outgoing edges', () => {
+    // source → a, b, c
+    const nodes = [node('source'), node('a'), node('b'), node('c')];
+    const edges = [
+      mkEdge('source', 'a'),
+      mkEdge('source', 'b'),
+      mkEdge('source', 'c'),
+    ];
+    const s = computeStats(nodes, edges);
+    expect(s.maxFanOut).toBe(3);
+    expect(s.maxFanIn).toBe(1);
+  });
+
+  it('fan stats ignore edges pointing at dangling ids', () => {
+    const nodes = [node('a')];
+    const edges = [mkEdge('a', 'ghost'), mkEdge('ghost', 'a')];
+    const s = computeStats(nodes, edges);
+    expect(s.maxFanIn).toBe(0);
+    expect(s.maxFanOut).toBe(0);
   });
 });

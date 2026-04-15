@@ -239,6 +239,16 @@ export const useGraphStore = create<GraphState>()(
       const source = state.nodes.find((n) => n.id === id);
       if (!source) return state;
       const newId = nextId();
+      // Find a unique name: strip any existing `_copy` or `_copyN` suffix
+      // so repeated duplication produces foo_copy, foo_copy2, foo_copy3
+      // instead of foo_copy_copy_copy.
+      const baseName = source.data.name.replace(/_copy\d*$/, '');
+      const existingNames = new Set(state.nodes.map((n) => n.data.name));
+      let candidate = `${baseName}_copy`;
+      let suffix = 2;
+      while (existingNames.has(candidate)) {
+        candidate = `${baseName}_copy${suffix++}`;
+      }
       const clone: FBlockNode = {
         id: newId,
         type: 'fblock',
@@ -247,7 +257,7 @@ export const useGraphStore = create<GraphState>()(
           ...source.data,
           scope: [...source.data.scope],
           testCounts: source.data.testCounts ? { ...source.data.testCounts } : undefined,
-          name: `${source.data.name}_copy`,
+          name: candidate,
         },
         selected: true,
       };

@@ -113,6 +113,10 @@ export interface GraphStats {
    * undirected. An isolated block counts as its own component.
    */
   components: number;
+  /** Highest fan-in (incoming edges) of any block. */
+  maxFanIn: number;
+  /** Highest fan-out (outgoing edges) of any block. */
+  maxFanOut: number;
 }
 
 /**
@@ -203,6 +207,26 @@ export function computeStats(nodes: FBlockNode[], edges: Edge[]): GraphStats {
     if (n.data.status === 'passing') passing++;
     else if (n.data.status === 'failing') failing++;
   }
+
+  // Fan-in / fan-out per block. Only counts edges whose BOTH endpoints
+  // exist — dangling edges (shouldn't normally be reachable thanks to
+  // fromJSON + onConnect guards, but defend anyway) are ignored.
+  const fanIn = new Map<string, number>();
+  const fanOut = new Map<string, number>();
+  for (const n of nodes) {
+    fanIn.set(n.id, 0);
+    fanOut.set(n.id, 0);
+  }
+  for (const e of edges) {
+    if (!fanIn.has(e.source) || !fanIn.has(e.target)) continue;
+    fanIn.set(e.target, (fanIn.get(e.target) || 0) + 1);
+    fanOut.set(e.source, (fanOut.get(e.source) || 0) + 1);
+  }
+  let maxFanIn = 0;
+  let maxFanOut = 0;
+  for (const v of fanIn.values()) if (v > maxFanIn) maxFanIn = v;
+  for (const v of fanOut.values()) if (v > maxFanOut) maxFanOut = v;
+
   return {
     blocks: nodes.length,
     edges: edges.length,
@@ -212,5 +236,7 @@ export function computeStats(nodes: FBlockNode[], edges: Edge[]): GraphStats {
     failing,
     longestChain: longestChainLength(nodes, edges),
     components: connectedComponents(nodes, edges),
+    maxFanIn,
+    maxFanOut,
   };
 }
