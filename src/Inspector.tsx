@@ -176,6 +176,10 @@ export function Inspector() {
     clearIterationInfoTimer();
     setIterationInfo(null);
     userAborted.current.aborted = false;
+    // Remember prior status so we can restore it on user-aborted runs —
+    // otherwise stopping a re-check on a passing block would downgrade it
+    // to "specd" and lose the known-good signal.
+    const priorStatus = live.status;
     patch(selected.id, { status: 'running_tests' });
 
     const run = runTests({
@@ -190,7 +194,11 @@ export function Inspector() {
     testHandle.current = null;
 
     if (userAborted.current.aborted) {
-      patch(selected.id, { status: 'specd' });
+      patch(selected.id, {
+        status: priorStatus === 'running_tests' || priorStatus === 'generating'
+          ? 'specd'
+          : priorStatus,
+      });
       setLastResult(null);
       return;
     }

@@ -17,6 +17,7 @@ import { exportGraph, exportAllLanguages } from './exporter';
 import { importSource } from './importer';
 import { IssuesModal } from './IssuesModal';
 import { TemplatesModal } from './TemplatesModal';
+import { ShortcutsModal } from './ShortcutsModal';
 import { countIssues } from './validation';
 import { useCostStore } from './costStore';
 import { formatCost } from './pricing';
@@ -49,6 +50,7 @@ function Canvas() {
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -274,6 +276,14 @@ function Canvas() {
         return;
       }
       if (inField) return;
+      // `?` anywhere (outside text fields) toggles the shortcut cheat sheet.
+      // Shift is typically held to produce `?` on US layouts, but we check
+      // the key itself so it works regardless of layout quirks.
+      if (!ctrl && e.key === '?') {
+        e.preventDefault();
+        setShortcutsOpen((o) => !o);
+        return;
+      }
       if (!ctrl) return;
       if (e.key === 'z' || e.key === 'Z') {
         e.preventDefault();
@@ -332,7 +342,22 @@ function Canvas() {
         <button onClick={onSave}>Save JSON</button>
         <button onClick={onLoad}>Load JSON</button>
         <button onClick={reset}>Clear</button>
-        <button className="icon-btn" onClick={openSettings} title="Settings">⚙</button>
+        <button
+          className="icon-btn"
+          onClick={() => setShortcutsOpen(true)}
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+        >
+          ?
+        </button>
+        <button
+          className="icon-btn"
+          onClick={openSettings}
+          title="Settings"
+          aria-label="Settings"
+        >
+          ⚙
+        </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -380,6 +405,7 @@ function Canvas() {
       <SettingsModal />
       <IssuesModal isOpen={issuesOpen} onClose={() => setIssuesOpen(false)} />
       <TemplatesModal isOpen={templatesOpen} onClose={() => setTemplatesOpen(false)} />
+      <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

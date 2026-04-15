@@ -585,6 +585,48 @@ html, body, #root {
 .template-row__label { font-weight: 600; font-size: 13px; color: var(--accent); }
 .template-row__desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
 
+.shortcut-group {
+  margin-bottom: 16px;
+}
+.shortcut-group:last-child { margin-bottom: 0; }
+.shortcut-group__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0;
+  font-size: 12px;
+}
+.shortcut-row__keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 170px;
+}
+.shortcut-row__label { color: var(--text); }
+.shortcut-sep { color: var(--muted); margin: 0 2px; }
+.kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--text);
+  min-width: 18px;
+  text-align: center;
+}
+
 /* React Flow dark theme tweaks */
 .react-flow__background { background: var(--bg); }
 .react-flow__controls {

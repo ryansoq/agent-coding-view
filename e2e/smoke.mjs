@@ -192,7 +192,7 @@ try {
 
   // 6. Settings modal opens + closes
   log('\n=== 6. settings modal ===');
-  await page.locator('.toolbar .icon-btn').click();
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.waitForSelector('.modal', { timeout: 2000 });
   check('settings modal appears', !!(await page.locator('.modal').count()));
   const apiKeyInput = await page.locator('input[type="password"]').count();
@@ -201,6 +201,18 @@ try {
   await page.waitForTimeout(200);
   const modalAfter = await page.locator('.modal').count();
   check('modal closes on Done', modalAfter === 0);
+
+  // 6b. Shortcuts modal — press `?` to toggle, check header, press again to close.
+  log('\n=== 6b. shortcuts cheat sheet ===');
+  await page.locator('body').click({ position: { x: 10, y: 10 } });
+  await page.keyboard.press('?');
+  await page.waitForSelector('.modal', { timeout: 2000 });
+  const shortcutsHeader = await page.locator('.modal__header').first().textContent();
+  check('shortcuts modal has the right header', (shortcutsHeader || '').includes('Keyboard shortcuts'), shortcutsHeader);
+  check('shortcuts modal renders kbd keys', (await page.locator('.kbd').count()) > 0);
+  await page.keyboard.press('?');
+  await page.waitForTimeout(150);
+  check('shortcuts modal closes on second `?`', (await page.locator('.modal').count()) === 0);
 
   // 7. Add a new block via toolbar
   log('\n=== 7. add new block ===');
