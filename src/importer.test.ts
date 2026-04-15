@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { findJsFunctions, importJs, findPyFunctions, importPy, importSource, inferCallEdges } from './importer';
+import {
+  findJsFunctions,
+  importJs,
+  findPyFunctions,
+  importPy,
+  importSource,
+  inferCallEdges,
+  stripJsStringsAndComments,
+  stripPyStringsAndComments,
+} from './importer';
 
 describe('findJsFunctions', () => {
   it('empty source yields no functions', () => {
@@ -323,6 +332,151 @@ def main():
     const target = result.nodes.find((n) => n.id === e.target);
     expect(source?.data.name).toBe('helper');
     expect(target?.data.name).toBe('main');
+  });
+});
+
+describe('stripJsStringsAndComments', () => {
+  it('strips double-quoted strings', () => {
+    // Input: 25 chars, 12 inside quotes ("hello foo(1)"), blanked.
+    expect(stripJsStringsAndComments('const x = "hello foo(1)";')).toBe(
+      'const x = "            ";',
+    );
+  });
+
+  it('strips single-quoted strings', () => {
+    // Input: 18 chars, 8 inside quotes ('foo(bar)'), blanked.
+    expect(stripJsStringsAndComments("return 'foo(bar)';")).toBe(
+      "return '        ';",
+    );
+  });
+
+  it('strips template literals', () => {
+    // Input: 16 chars, 6 inside backticks (foo(x)), blanked.
+    expect(stripJsStringsAndComments('return `foo(x)`;')).toBe(
+      'return `      `;',
+    );
+  });
+
+  it('strips line comments but preserves newlines', () => {
+    const src = `x; // foo(y)
+z;`;
+    const stripped = stripJsStringsAndComments(src);
+    expect(stripped.split('\n')).toHaveLength(2);
+    expect(stripped).not.toContain('foo(y)');
+    expect(stripped).toContain('x;');
+    expect(stripped).toContain('z;');
+  });
+
+  it('strips block comments spanning lines', () => {
+    const src = `x;
+/* foo(y)
+   bar(z) */
+a;`;
+    const stripped = stripJsStringsAndComments(src);
+    expect(stripped).not.toContain('foo(y)');
+    expect(stripped).not.toContain('bar(z)');
+    expect(stripped).toContain('x;');
+    expect(stripped).toContain('a;');
+  });
+
+  it('handles backslash escapes inside strings', () => {
+    expect(stripJsStringsAndComments(`"a\\"foo(x)"`)).toBe('"         "');
+  });
+});
+
+describe('stripPyStringsAndComments', () => {
+  it('strips hash comments', () => {
+    const stripped = stripPyStringsAndComments('x = 1  # foo(y)');
+    expect(stripped).not.toContain('foo(y)');
+    expect(stripped).toContain('x = 1');
+  });
+
+  it('strips triple-double strings', () => {
+    const src = `"""
+foo(bar)
+"""`;
+    const stripped = stripPyStringsAndComments(src);
+    expect(stripped).not.toContain('foo(bar)');
+  });
+
+  it('strips triple-single strings', () => {
+    const src = `'''helper(x)'''`;
+    expect(stripPyStringsAndComments(src)).not.toContain('helper(x)');
+  });
+
+  it('strips single-quoted strings', () => {
+    expect(stripPyStringsAndComments(`msg = 'helper(x)'`)).not.toContain('helper(x)');
+  });
+});
+
+describe('inferCallEdges string/comment awareness', () => {
+  it('JS: call inside string literal is not counted', () => {
+    const result = importJs(
+      `function helper() { return 1; }
+function main() { const x = "helper()"; return 0; }`,
+    );
+    expect(result.edges).toEqual([]);
+  });
+
+  it('JS: call inside line comment is not counted', () => {
+    const result = importJs(
+      `function helper() { return 1; }
+function main() { // helper()
+  return 0; }`,
+    );
+    expect(result.edges).toEqual([]);
+  });
+
+  it('JS: call inside block comment is not counted', () => {
+    const result = importJs(
+      `function helper() { return 1; }
+function main() { /* helper() */ return 0; }`,
+    );
+    expect(result.edges).toEqual([]);
+  });
+
+  it('JS: real call outside strings/comments still counted', () => {
+    const result = importJs(
+      `function helper() { return 1; }
+function main() { /* no call */ return helper(); }`,
+    );
+    expect(result.edges).toHaveLength(1);
+  });
+
+  it('Python: call inside # comment is not counted', () => {
+    const result = importPy(
+      `def helper():
+    return 1
+
+def main():
+    # helper()
+    return 0`,
+    );
+    expect(result.edges).toEqual([]);
+  });
+
+  it('Python: call inside docstring is not counted', () => {
+    const result = importPy(
+      `def helper():
+    return 1
+
+def main():
+    """This calls helper() for no reason"""
+    return 0`,
+    );
+    expect(result.edges).toEqual([]);
+  });
+
+  it('Python: real call outside strings/comments still counted', () => {
+    const result = importPy(
+      `def helper():
+    return 1
+
+def main():
+    """doc mentions helper() but the real call is below"""
+    return helper()`,
+    );
+    expect(result.edges).toHaveLength(1);
   });
 });
 

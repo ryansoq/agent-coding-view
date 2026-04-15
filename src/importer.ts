@@ -148,26 +148,169 @@ function escapeRegex(s: string): string {
 }
 
 /**
- * Naive call-graph inference. For every block, scan its body for
+ * Replace JS string literal contents and `//` / `/ * * /` comments with
+ * spaces, preserving length, newlines, AND the delimiter characters
+ * themselves. Quote chars (`"` `'` `` ` ``) are kept so the output stays
+ * readable for debugging; the contents inside are all blanked.
+ *
+ * Backslash escapes inside strings are consumed as a pair. Template
+ * literal interpolation (${...}) is treated as inside the string —
+ * this MVP doesn't track interpolation depth.
+ */
+export function stripJsStringsAndComments(code: string): string {
+  const out = code.split('');
+  let i = 0;
+  let inString: false | string = false;
+  while (i < code.length) {
+    const ch = code[i];
+    if (inString) {
+      if (ch === '\\' && i + 1 < code.length) {
+        out[i] = ' ';
+        if (code[i + 1] !== '\n') out[i + 1] = ' ';
+        i += 2;
+        continue;
+      }
+      if (ch === inString) {
+        // Keep the closing quote as-is
+        inString = false;
+        i++;
+        continue;
+      }
+      if (ch !== '\n') out[i] = ' ';
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      // Keep the opening quote as-is
+      inString = ch;
+      i++;
+      continue;
+    }
+    if (ch === '/' && code[i + 1] === '/') {
+      while (i < code.length && code[i] !== '\n') {
+        out[i] = ' ';
+        i++;
+      }
+      continue;
+    }
+    if (ch === '/' && code[i + 1] === '*') {
+      out[i] = ' ';
+      out[i + 1] = ' ';
+      i += 2;
+      while (i < code.length - 1 && !(code[i] === '*' && code[i + 1] === '/')) {
+        if (code[i] !== '\n') out[i] = ' ';
+        i++;
+      }
+      if (i < code.length) { out[i] = ' '; i++; }
+      if (i < code.length) { out[i] = ' '; i++; }
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
+/**
+ * Replace Python string literal contents (single, double, and triple-
+ * quoted) and `#` comments with spaces. Delimiter characters are kept
+ * so the output is still readable, matching stripJsStringsAndComments.
+ */
+export function stripPyStringsAndComments(code: string): string {
+  const out = code.split('');
+  let i = 0;
+  let inString: false | string = false;
+  while (i < code.length) {
+    if (inString) {
+      if (inString.length === 3) {
+        if (code.slice(i, i + 3) === inString) {
+          // Keep the closing triple-quote as-is
+          inString = false;
+          i += 3;
+          continue;
+        }
+        if (code[i] !== '\n') out[i] = ' ';
+        i++;
+        continue;
+      }
+      // Single-char string
+      if (code[i] === '\\' && i + 1 < code.length) {
+        out[i] = ' ';
+        if (code[i + 1] !== '\n') out[i + 1] = ' ';
+        i += 2;
+        continue;
+      }
+      if (code[i] === inString) {
+        inString = false;
+        i++;
+        continue;
+      }
+      if (code[i] !== '\n') out[i] = ' ';
+      i++;
+      continue;
+    }
+
+    // Comment
+    if (code[i] === '#') {
+      while (i < code.length && code[i] !== '\n') {
+        out[i] = ' ';
+        i++;
+      }
+      continue;
+    }
+
+    // Triple-quoted string (check BEFORE single-char variants)
+    const trip = code.slice(i, i + 3);
+    if (trip === '"""' || trip === "'''") {
+      inString = trip;
+      i += 3;
+      continue;
+    }
+
+    if (code[i] === '"' || code[i] === "'") {
+      inString = code[i];
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+  return out.join('');
+}
+
+/**
+ * Call-graph inference. For every block, scan its body for
  * `otherName(` patterns and add an edge `other → this` (other is
  * upstream because this block depends on it).
  *
- * String-literal and comment detection is deliberately skipped here —
- * a false positive on a word inside a comment is better than missing
- * a real call for MVP. Self-references (recursive calls) are ignored.
+ * Before matching, the body is passed through a per-language stripper
+ * that replaces string literals and comments with spaces. That way a
+ * `helper(` inside `"helper()"` or `# helper()` won't create a false
+ * edge. Self-references (recursive calls) are still ignored.
  */
 export function inferCallEdges(nodes: FBlockNode[]): Edge[] {
   const edges: Edge[] = [];
   let n = 1;
   const seen = new Set<string>();
-  for (const caller of nodes) {
-    const body = caller.data.body;
+  // Pre-compute cleaned body per block so we don't strip the same body
+  // N times across N callees.
+  const cleanBodies = new Map<string, string>();
+  for (const node of nodes) {
+    const body = node.data.body;
     if (!body) continue;
+    const lang = node.data.language || 'javascript';
+    const clean = lang === 'python'
+      ? stripPyStringsAndComments(body)
+      : stripJsStringsAndComments(body);
+    cleanBodies.set(node.id, clean);
+  }
+  for (const caller of nodes) {
+    const clean = cleanBodies.get(caller.id);
+    if (!clean) continue;
     for (const callee of nodes) {
       if (callee.id === caller.id) continue;
       if (!callee.data.name) continue;
       const re = new RegExp(`\\b${escapeRegex(callee.data.name)}\\s*\\(`);
-      if (!re.test(body)) continue;
+      if (!re.test(clean)) continue;
       const key = `${callee.id}->${caller.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
