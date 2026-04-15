@@ -29,9 +29,13 @@ async function waitForVite() {
     proc.on('exit', (code) => {
       if (!ready) reject(new Error(`vite exited early with code ${code}`));
     });
+    // CI runners (especially on first run without node_modules/.vite cache)
+    // can take 30+ seconds for Vite's dep pre-bundle. Locally it's <1s.
+    const READY_TIMEOUT_MS = process.env.CI ? 90_000 : 15_000;
     setTimeout(() => {
-      if (!ready) reject(new Error('vite did not become ready within 15s'));
-    }, 15000);
+      if (!ready)
+        reject(new Error(`vite did not become ready within ${READY_TIMEOUT_MS}ms`));
+    }, READY_TIMEOUT_MS);
   });
 }
 
