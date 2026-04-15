@@ -165,3 +165,96 @@ export function importJs(source: string, language = 'javascript'): ImportResult 
   }));
   return { nodes, edges: [] };
 }
+
+/**
+ * Find every TOP-LEVEL `def name(...):` declaration in Python source.
+ * Uses a line-based scan with indent tracking: the body extends until the
+ * first non-blank line whose indent is ≤ the def's indent. Indented defs
+ * (class methods, nested) are intentionally not surfaced.
+ *
+ * Known limitation: `def foo():` inside a triple-quoted docstring would be
+ * matched as a real declaration. This is rare enough in practice that MVP
+ * accepts it — a proper Python parser (via Pyodide's ast module, or a JS-
+ * side PEG) would be needed for full fidelity.
+ */
+export function findPyFunctions(source: string): ParsedFunction[] {
+  const lines = source.split('\n');
+  const results: ParsedFunction[] = [];
+  // Allows `async def`, an optional `-> ReturnType`, and an optional
+  // trailing `# comment`. The `:` must be the last meaningful thing on
+  // the line — one-liner defs like `def foo(): return 1` are not
+  // surfaced in this MVP.
+  const defRe =
+    /^(\s*)(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*[^:]+)?\s*:\s*(?:#.*)?$/;
+
+  let i = 0;
+  while (i < lines.length) {
+    const m = lines[i].match(defRe);
+    if (!m) { i++; continue; }
+    const baseIndent = m[1].length;
+    // MVP: only top-level defs. Indented defs (class methods, inner
+    // defs) are left inside their containing function's body.
+    if (baseIndent > 0) { i++; continue; }
+
+    const name = m[2];
+    const params = m[3].trim();
+
+    // Collect body lines: blank or indented more than the def line.
+    const bodyLines: string[] = [];
+    let j = i + 1;
+    while (j < lines.length) {
+      const bl = lines[j];
+      if (bl.trim() === '') {
+        bodyLines.push(bl);
+        j++;
+        continue;
+      }
+      const indent = bl.match(/^[ \t]*/)?.[0].length ?? 0;
+      if (indent <= baseIndent) break;
+      bodyLines.push(bl);
+      j++;
+    }
+
+    // Trim trailing blank lines and dedent by the minimum non-blank indent.
+    while (bodyLines.length > 0 && bodyLines[bodyLines.length - 1].trim() === '') {
+      bodyLines.pop();
+    }
+    const indents = bodyLines
+      .filter((l) => l.trim().length > 0)
+      .map((l) => l.match(/^[ \t]*/)?.[0].length ?? 0);
+    const minIndent = indents.length > 0 ? Math.min(...indents) : 0;
+    const body = bodyLines.map((l) => l.slice(minIndent)).join('\n');
+
+    results.push({ name, params, body });
+    i = j;
+  }
+  return results;
+}
+
+/** Build a graph from parsed Python source. Mirror of importJs. */
+export function importPy(source: string): ImportResult {
+  const fns = findPyFunctions(source);
+  const nodes: FBlockNode[] = fns.map((fn, i) => ({
+    id: `b${i + 1}`,
+    type: 'fblock',
+    position: { x: 80, y: 80 + i * 220 },
+    data: {
+      ...defaultBlockData(fn.name),
+      signature: `def ${fn.name}(${fn.params})`,
+      body: fn.body,
+      language: 'python',
+      status: 'specd',
+    },
+  }));
+  return { nodes, edges: [] };
+}
+
+/**
+ * Pick an importer based on the file extension. Anything that's not
+ * Python-ish falls through to the JS importer.
+ */
+export function importSource(source: string, filename: string): ImportResult {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.py')) return importPy(source);
+  return importJs(source);
+}

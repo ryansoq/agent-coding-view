@@ -14,7 +14,7 @@ import { SettingsModal } from './SettingsModal';
 import { useSettingsStore } from './settingsStore';
 import { computeLayout } from './layout';
 import { exportGraph } from './exporter';
-import { importJs } from './importer';
+import { importSource } from './importer';
 import { IssuesModal } from './IssuesModal';
 import { countIssues } from './validation';
 import { runTests, isLanguageSandboxed } from './sandbox/runner';
@@ -104,8 +104,7 @@ function Canvas() {
       if (!file) return;
       const text = await file.text();
       try {
-        const { language } = useSettingsStore.getState();
-        const { nodes: parsedNodes, edges: parsedEdges } = importJs(text, language);
+        const { nodes: parsedNodes, edges: parsedEdges } = importSource(text, file.name);
         if (parsedNodes.length === 0) {
           alert('No top-level function declarations found in the file.');
           return;
@@ -206,7 +205,7 @@ function Canvas() {
         <button onClick={onRunAll} title="Run tests on every TDD block in sequence">Run all</button>
         <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
         <button onClick={onExport} title="Export all blocks of the default language as one source file">Export</button>
-        <button onClick={onImportClick} title="Import a .js file — each top-level function becomes a block">Import JS</button>
+        <button onClick={onImportClick} title="Import a .js or .py file — each top-level function becomes a block">Import</button>
         <button
           onClick={() => setIssuesOpen(true)}
           className={issueCounts.errors > 0 ? 'issues-btn issues-btn--has-errors' : issueCounts.warnings > 0 ? 'issues-btn issues-btn--has-warnings' : 'issues-btn'}
@@ -228,7 +227,7 @@ function Canvas() {
         <input
           ref={importInputRef}
           type="file"
-          accept=".js,.ts,.mjs,text/javascript"
+          accept=".js,.ts,.mjs,.py,text/javascript,text/x-python"
           style={{ display: 'none' }}
           onChange={onImportPicked}
         />
