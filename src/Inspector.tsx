@@ -3,6 +3,7 @@ import { useGraphStore } from './store';
 import { useSettingsStore } from './settingsStore';
 import { DevMode, FunctionBlockData } from './types';
 import { generateBody, generateBodyAsync, TokenUsage } from './llm';
+import { estimateCostUsd, formatCost } from './pricing';
 import { LANGUAGES, labelFor } from './languages';
 import { runTests, isLanguageSandboxed, RunResult, RunHandle } from './sandbox/runner';
 import { detectCycles } from './graph';
@@ -474,6 +475,8 @@ export function Inspector() {
               {lastUsage.cache_read_input_tokens
                 ? ` (${lastUsage.cache_read_input_tokens} from cache)`
                 : ''}
+              {' · '}
+              {formatCost(estimateCostUsd(model, lastUsage))}
             </span>
           )}
           {d.mode === 'TDD' && effectiveLanguage === 'python' && isBusy && (

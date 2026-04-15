@@ -837,6 +837,12 @@ try {
     const hints = await mockedPage.locator('.field__hint').allTextContents();
     const usageHint = hints.find((h) => /Tokens:\s*\d+\s*in\s*\/\s*\d+\s*out/.test(h));
     check('token usage hint shows after generate', !!usageHint, `hints: ${JSON.stringify(hints)}`);
+    // Cost estimate should be appended to the same hint
+    check(
+      'cost estimate in USD appears alongside tokens',
+      !!usageHint && /\$\d|\$\s*<|< \$/.test(usageHint),
+      `usageHint: "${usageHint}"`,
+    );
   }
 
   await mockedPage.unroute('https://api.anthropic.com/**');
