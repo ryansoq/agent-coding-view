@@ -149,6 +149,25 @@ function Canvas() {
 
   const nodeTypes = useMemo(() => ({ fblock: FunctionBlockNode }), []);
 
+  // Derived edges with animated=true when the downstream block is busy.
+  // This gives a live "execution trace" effect during Run all or during
+  // any in-flight generate — edges feeding a running block pulse so you
+  // can see the flow advance. The store is untouched so onEdgesChange
+  // still sees the original edge shape.
+  const displayEdges = useMemo(() => {
+    const busyTargets = new Set(
+      nodes
+        .filter(
+          (n) => n.data.status === 'running_tests' || n.data.status === 'generating',
+        )
+        .map((n) => n.id),
+    );
+    if (busyTargets.size === 0) return edges;
+    return edges.map((e) =>
+      busyTargets.has(e.target) ? { ...e, animated: true } : e,
+    );
+  }, [edges, nodes]);
+
   const onSave = useCallback(() => {
     const blob = new Blob([toJSON()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -253,7 +272,7 @@ function Canvas() {
         <div className="canvas">
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={displayEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}

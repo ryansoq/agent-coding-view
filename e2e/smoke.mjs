@@ -484,15 +484,28 @@ try {
 
   // 9aa. Run all — one click should send both validate (JS) and py_slug
   // (Python) to passing state. Pyodide cold-start happens here on a
-  // fresh page so allow ~30s.
+  // fresh page so allow ~30s. Also prove that edges feeding a running
+  // block get animated (execution trace).
   log('\n=== 9aa. Run all tests ===');
+  // Start a watcher for .animated edges BEFORE clicking Run all so we
+  // don't miss the transient state.
+  const sawAnimated = page.waitForFunction(
+    () => document.querySelectorAll('.react-flow__edge.animated').length > 0,
+    { timeout: 30000 },
+  );
   await page.getByRole('button', { name: 'Run all' }).click();
+  await sawAnimated;
+  check('at least one edge animates during Run all', true);
   await page.waitForFunction(
     () => document.querySelectorAll('.fblock.status-passing').length >= 2,
     { timeout: 30000 },
   );
   const passingAfterRunAll = await page.locator('.fblock.status-passing').count();
   check('Run all leaves both TDD blocks passing', passingAfterRunAll >= 2, `${passingAfterRunAll}`);
+  // After all blocks finish, animation should clear.
+  await page.waitForTimeout(200);
+  const stillAnimated = await page.locator('.react-flow__edge.animated').count();
+  check('edge animation clears when nothing is busy', stillAnimated === 0, `${stillAnimated}`);
 
   // 9b0. Persist roundtrip — add a block, reload (without clearing
   // localStorage), verify the new block is still on the canvas. Also
