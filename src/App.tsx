@@ -227,6 +227,18 @@ function Canvas() {
 
   const onLoad = useCallback(() => fileInputRef.current?.click(), []);
 
+  const onClear = useCallback(() => {
+    // Skip confirm on an already-empty canvas. For a populated graph,
+    // require explicit confirmation — Undo can recover but users panic
+    // first, click-through later.
+    const count = useGraphStore.getState().nodes.length;
+    if (count === 0) return;
+    const ok = window.confirm(
+      `Clear all ${count} block${count === 1 ? '' : 's'}? (Ctrl+Z undoes this.)`,
+    );
+    if (ok) reset();
+  }, [reset]);
+
   const onFilePicked = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -341,7 +353,7 @@ function Canvas() {
         </button>
         <button onClick={onSave}>Save JSON</button>
         <button onClick={onLoad}>Load JSON</button>
-        <button onClick={reset}>Clear</button>
+        <button onClick={onClear} title="Remove all blocks and edges (Ctrl+Z to undo)">Clear</button>
         <button
           className="icon-btn"
           onClick={() => setShortcutsOpen(true)}
@@ -375,6 +387,24 @@ function Canvas() {
       </div>
       <div className="workspace">
         <div className="canvas">
+          {nodes.length === 0 && (
+            <div className="canvas-empty">
+              <div className="canvas-empty__title">Canvas is empty</div>
+              <div className="canvas-empty__hint">
+                Start by adding a block, picking a template, or importing a
+                source file. Press <kbd className="kbd">?</kbd> for the full
+                shortcut list.
+              </div>
+              <div className="canvas-empty__actions">
+                <button className="primary" onClick={() => addBlock()}>
+                  + Add block
+                </button>
+                <button onClick={() => setTemplatesOpen(true)}>Templates</button>
+                <button onClick={onImportClick}>Import .js / .py</button>
+                <button onClick={onLoad}>Load JSON</button>
+              </div>
+            </div>
+          )}
           <ReactFlow
             nodes={displayNodes}
             edges={displayEdges}

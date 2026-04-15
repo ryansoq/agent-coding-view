@@ -104,6 +104,41 @@ html, body, #root {
 }
 .canvas { flex: 1; position: relative; min-width: 0; }
 
+.canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 5;
+  pointer-events: none;
+  text-align: center;
+  padding: 24px;
+}
+.canvas-empty__title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+}
+.canvas-empty__hint {
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.canvas-empty__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  pointer-events: auto;
+}
+.canvas-empty__actions button {
+  pointer-events: auto;
+}
+
 /* Inspector */
 .inspector {
   width: 380px;

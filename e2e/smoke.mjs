@@ -113,6 +113,9 @@ try {
       errors.push(`console.error: ${m.text()}`);
     }
   });
+  // The "Clear all N blocks?" window.confirm is the only native dialog in
+  // the app — auto-accept it so the e2e can still use the Clear button.
+  page.on('dialog', (d) => d.accept());
 
   log('loading app…');
   await page.goto(vite.url, { waitUntil: 'networkidle' });
@@ -859,6 +862,9 @@ function main(x) { return helper(helper(x)); }
     await page.waitForTimeout(200);
     const afterClearNodes = (await page.$$('.react-flow__node')).length;
     check('clear removes all nodes', afterClearNodes === 0, `${afterClearNodes} nodes left`);
+    // Empty-state overlay should appear when the canvas is empty.
+    const emptyStateVisible = await page.locator('.canvas-empty').count();
+    check('empty-state overlay appears when canvas is empty', emptyStateVisible === 1);
 
     if (savedPath) {
       await page.locator("input[type=\"file\"]").first().setInputFiles(savedPath);
