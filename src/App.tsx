@@ -18,6 +18,8 @@ import { importSource } from './importer';
 import { IssuesModal } from './IssuesModal';
 import { TemplatesModal } from './TemplatesModal';
 import { countIssues } from './validation';
+import { useCostStore } from './costStore';
+import { formatCost } from './pricing';
 import { runTests, isLanguageSandboxed } from './sandbox/runner';
 
 function Canvas() {
@@ -41,6 +43,9 @@ function Canvas() {
   // without triggering a re-render every tick. useMemo on nodes/edges refs
   // keeps recomputation cheap.
   const issueCounts = useMemo(() => countIssues(nodes, edges), [nodes, edges]);
+  const sessionCost = useCostStore((s) => s.totalUsd);
+  const sessionCalls = useCostStore((s) => s.callCount);
+  const resetCost = useCostStore((s) => s.reset);
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -199,6 +204,15 @@ function Canvas() {
       <div className="toolbar">
         <span className="title">Agent Coding View</span>
         <span className="hint">P2</span>
+        {sessionCalls > 0 && (
+          <span
+            className="session-cost"
+            title={`${sessionCalls} generate call${sessionCalls === 1 ? '' : 's'} this session · click to reset`}
+            onClick={resetCost}
+          >
+            Session: {formatCost(sessionCost)}
+          </span>
+        )}
         <span className="spacer" />
         <button className="primary" onClick={() => addBlock()}>+ Add block</button>
         <button onClick={() => setTemplatesOpen(true)} title="Create a block from a preset template">Templates</button>

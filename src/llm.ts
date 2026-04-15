@@ -307,7 +307,7 @@ export function generateBody(
 }
 
 export interface GenerateAsyncHandle {
-  promise: Promise<string>;
+  promise: Promise<{ body: string; usage?: TokenUsage }>;
   abort: () => void;
   handle: GenerateHandle;
 }
@@ -320,11 +320,11 @@ export function generateBodyAsync(
 ): GenerateAsyncHandle {
   let handle!: GenerateHandle;
   let rejectFn!: (err: Error) => void;
-  const promise = new Promise<string>((resolve, reject) => {
+  const promise = new Promise<{ body: string; usage?: TokenUsage }>((resolve, reject) => {
     rejectFn = reject;
     handle = generateBody(apiKey, model, input, {
       onDelta,
-      onDone: ({ body }) => resolve(body),
+      onDone: ({ body, usage }) => resolve({ body, usage }),
       onError: (err) => reject(err),
     });
   });

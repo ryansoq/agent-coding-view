@@ -4,6 +4,7 @@ import { useSettingsStore } from './settingsStore';
 import { DevMode, FunctionBlockData } from './types';
 import { generateBody, generateBodyAsync, TokenUsage } from './llm';
 import { estimateCostUsd, formatCost } from './pricing';
+import { useCostStore } from './costStore';
 import { LANGUAGES, labelFor } from './languages';
 import { runTests, isLanguageSandboxed, RunResult, RunHandle } from './sandbox/runner';
 import { detectCycles } from './graph';
@@ -131,7 +132,10 @@ export function Inspector() {
         onDelta: (delta) => appendBody(selected.id, delta),
         onDone: ({ body, usage }) => {
           patch(selected.id, { body, status: 'specd' });
-          if (usage) setLastUsage(usage);
+          if (usage) {
+            setLastUsage(usage);
+            useCostStore.getState().record(model, usage);
+          }
           genAbort.current = null;
         },
         onError: (err) => {
@@ -232,7 +236,12 @@ export function Inspector() {
           (delta) => appendBody(selected.id, delta),
         );
         genAbort.current = gen.abort;
-        body = await gen.promise;
+        const result = await gen.promise;
+        body = result.body;
+        if (result.usage) {
+          setLastUsage(result.usage);
+          useCostStore.getState().record(model, result.usage);
+        }
         genAbort.current = null;
       } catch (err) {
         genAbort.current = null;

@@ -65,6 +65,17 @@ html, body, #root {
   margin-right: 6px;
 }
 .toolbar .hint { color: var(--muted); font-size: 11px; }
+.session-cost {
+  color: var(--accent-2);
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.session-cost:hover { background: var(--panel-2); }
 
 .workspace {
   flex: 1;

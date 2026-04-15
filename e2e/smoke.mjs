@@ -881,8 +881,11 @@ try {
       );
     }
     check('anthropic endpoint was hit at least once', intercepted >= 1, `count=${intercepted}`);
-    // Token usage hint should appear after onDone fires
+    // Session cost chip should appear in the toolbar after the first generate
     await mockedPage.waitForTimeout(200);
+    const sessionChip = await mockedPage.locator('.session-cost').count();
+    check('session cost chip appears after first generate', sessionChip === 1, `count=${sessionChip}`);
+    // Token usage hint should appear after onDone fires
     const hints = await mockedPage.locator('.field__hint').allTextContents();
     const usageHint = hints.find((h) => /Tokens:\s*\d+\s*in\s*\/\s*\d+\s*out/.test(h));
     check('token usage hint shows after generate', !!usageHint, `hints: ${JSON.stringify(hints)}`);
