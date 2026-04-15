@@ -37,6 +37,7 @@ const GROUPS: Group[] = [
     items: [
       { keys: [CTRL, 'Enter'], label: 'Run tests on selected block' },
       { keys: [CTRL, 'Shift', 'Enter'], label: 'Run every TDD block' },
+      { keys: [CTRL, 'D'], label: 'Duplicate selected block' },
       { keys: ['Delete'], label: 'Delete selected block(s) / edge(s)' },
     ],
   },

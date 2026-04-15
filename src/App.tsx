@@ -22,6 +22,24 @@ import { countIssues } from './validation';
 import { useCostStore } from './costStore';
 import { formatCost } from './pricing';
 import { runTests, isLanguageSandboxed } from './sandbox/runner';
+import type { Node as RFNode } from 'reactflow';
+import type { FunctionBlockData } from './types';
+
+// Keep minimap colors in sync with the status palette used by the card
+// footer and validation issue badges, so the minimap tells the same story
+// as the canvas at a glance.
+const STATUS_MINIMAP_COLOR: Record<FunctionBlockData['status'], string> = {
+  passing: '#3ecf8e',
+  failing: '#ff5d73',
+  generating: '#ffd166',
+  running_tests: '#ffd166',
+  specd: '#5b8cff',
+  stub: '#4a556e',
+};
+function minimapNodeColor(node: RFNode) {
+  const status = (node.data as FunctionBlockData | undefined)?.status;
+  return (status && STATUS_MINIMAP_COLOR[status]) || '#5b8cff';
+}
 
 function Canvas() {
   const nodes = useGraphStore((s) => s.nodes);
@@ -287,6 +305,16 @@ function Canvas() {
         }
         return;
       }
+      // Ctrl/Cmd+D duplicates the currently-selected block. Matches the
+      // Inspector "Duplicate" button. Blocks the browser's bookmark-this
+      // shortcut, which is an acceptable trade inside an app.
+      if (ctrl && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        const state = useGraphStore.getState();
+        const selected = state.nodes.find((n) => n.selected);
+        if (selected) state.duplicateBlock(selected.id);
+        return;
+      }
       if (inField) return;
       // `?` anywhere (outside text fields) toggles the shortcut cheat sheet.
       // Shift is typically held to produce `?` on US layouts, but we check
@@ -425,7 +453,7 @@ function Canvas() {
               position="bottom-right"
               pannable
               zoomable
-              nodeColor={() => '#5b8cff'}
+              nodeColor={minimapNodeColor}
               maskColor="rgba(15,17,21,0.7)"
             />
           </ReactFlow>

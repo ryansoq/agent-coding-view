@@ -305,6 +305,35 @@ try {
     `before=${runCountBefore}, after=${runCountAfter}`,
   );
 
+  // 7h. Ctrl+D duplicates the selected block. Section 2 already clicked
+  // `validate`, so it should still be selected.
+  log('\n=== 7h. Ctrl+D duplicates selected block ===');
+  // Make sure validate is selected (earlier sections may have deselected it).
+  const validateCard = page
+    .locator('.react-flow__node')
+    .filter({ has: page.locator('.fblock__name', { hasText: /^validate$/ }) })
+    .first();
+  await validateCard.locator('.fblock__body').click();
+  await page.waitForTimeout(100);
+  const beforeDupe = (await page.$$('.react-flow__node')).length;
+  // Click somewhere outside an input so the document body has focus —
+  // otherwise Ctrl+D hits an input and we'd skip via inField check.
+  await page.locator('.canvas').click({ position: { x: 10, y: 10 } });
+  // Re-click validate to restore selection that the canvas click cleared.
+  await validateCard.locator('.fblock__body').click();
+  await page.waitForTimeout(100);
+  await page.keyboard.press('Control+d');
+  await page.waitForTimeout(200);
+  const afterDupe = (await page.$$('.react-flow__node')).length;
+  check('Ctrl+D adds a new block', afterDupe === beforeDupe + 1, `${beforeDupe} → ${afterDupe}`);
+  const hasCopyName = await page.locator('.fblock__name', { hasText: 'validate_copy' }).count();
+  check('duplicate carries _copy suffix', hasCopyName >= 1, `saw ${hasCopyName}`);
+  // Undo the duplication so later sections see a clean graph.
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  const afterUndoDupe = (await page.$$('.react-flow__node')).length;
+  check('Ctrl+Z undoes the duplication', afterUndoDupe === beforeDupe, `${beforeDupe} → ${afterUndoDupe}`);
+
   // 7f. Search filter — typing in the toolbar search should dim non-matching
   // blocks (CSS class search-dim). Typing "validate" should leave validate
   // at full opacity and dim the other 3 seed blocks.
