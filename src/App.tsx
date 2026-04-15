@@ -257,6 +257,22 @@ function Canvas() {
         searchInputRef.current?.select();
         return;
       }
+      // Ctrl/Cmd+Enter runs the currently-selected block's tests.
+      // Ctrl+Shift+Enter runs every TDD block in the graph.
+      // These work from anywhere — including textareas, where you often
+      // want to tweak a test and fire it without clicking away.
+      if (ctrl && e.key === 'Enter') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          onRunAll();
+        } else {
+          // Delegate to Inspector via a DOM custom event — avoids ref
+          // plumbing and keeps the shortcut handler decoupled from
+          // whatever block is currently selected.
+          window.dispatchEvent(new CustomEvent('acv:run-current-tests'));
+        }
+        return;
+      }
       if (inField) return;
       if (!ctrl) return;
       if (e.key === 'z' || e.key === 'Z') {
@@ -270,7 +286,7 @@ function Canvas() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  }, [undo, redo, onRunAll]);
 
   return (
     <div className="app">

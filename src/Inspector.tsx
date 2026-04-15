@@ -80,6 +80,17 @@ export function Inspector() {
     }
   }, [selected?.id]);
 
+  // Global Ctrl/Cmd+Enter dispatches 'acv:run-current-tests' from App.tsx —
+  // listen here and delegate to the local onRunTests handler. Wrapped in a
+  // ref so we don't re-register the listener on every render (onRunTests
+  // is recreated each render).
+  const runTestsRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const handler = () => runTestsRef.current();
+    window.addEventListener('acv:run-current-tests', handler);
+    return () => window.removeEventListener('acv:run-current-tests', handler);
+  }, []);
+
   // Auto-clear the iteration info banner a few seconds after it lands in a terminal state.
   const flashIterationInfo = (msg: string) => {
     setIterationInfo(msg);
@@ -98,6 +109,8 @@ export function Inspector() {
   };
 
   if (!selected) {
+    // Make the global Ctrl+Enter shortcut a no-op when nothing is picked.
+    runTestsRef.current = () => {};
     return (
       <aside className="inspector inspector--empty">
         <div className="inspector__empty">
@@ -311,6 +324,11 @@ export function Inspector() {
       setIterationInfo(null);
     }
   };
+
+  // Expose the current onRunTests to the global keyboard shortcut handler.
+  // Written during render (React permits ref writes here so long as they
+  // don't cause render loops) so each render captures the latest closure.
+  runTestsRef.current = onRunTests;
 
   const onAbort = () => {
     userAborted.current.aborted = true;
