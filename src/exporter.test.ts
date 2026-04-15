@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Edge } from 'reactflow';
-import { topoSort, exportToJs, exportToPython, exportGraph } from './exporter';
+import { topoSort, exportToJs, exportToPython, exportGraph, exportAllLanguages } from './exporter';
 import { FBlockNode } from './store';
 import { defaultBlockData, FunctionBlockData } from './types';
 
@@ -209,5 +209,52 @@ describe('exportGraph dispatch', () => {
     expect(exportGraph([], [], 'javascript', 'javascript').filename).toMatch(/\.js$/);
     expect(exportGraph([], [], 'typescript', 'javascript').filename).toMatch(/\.ts$/);
     expect(exportGraph([], [], 'python', 'javascript').filename).toMatch(/\.py$/);
+  });
+});
+
+describe('exportAllLanguages', () => {
+  it('empty graph returns empty array', () => {
+    expect(exportAllLanguages([], [], 'javascript')).toEqual([]);
+  });
+
+  it('only emits languages that have at least one block', () => {
+    const nodes = [
+      node('a', { name: 'jsOnly', language: 'javascript', body: 'return 1;' }),
+      node('b', { name: 'pyOnly', language: 'python', body: 'return 2' }),
+    ];
+    const results = exportAllLanguages(nodes, [], 'javascript');
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.filename.split('.').pop())).toEqual(['js', 'py']);
+  });
+
+  it('skips languages with no blocks', () => {
+    const nodes = [node('a', { name: 'only', language: 'typescript', body: 'return 1;' })];
+    const results = exportAllLanguages(nodes, [], 'javascript');
+    // Blocks with explicit language=typescript; no js, no py.
+    expect(results).toHaveLength(1);
+    expect(results[0].filename).toMatch(/\.ts$/);
+  });
+
+  it('default-language inheritance puts unlabeled blocks into the default', () => {
+    const nodes = [
+      node('a', { name: 'inherited', language: '', body: 'return 1;' }),
+      node('b', { name: 'explicit_py', language: 'python', body: 'return 2' }),
+    ];
+    const results = exportAllLanguages(nodes, [], 'javascript');
+    const langs = results.map((r) => r.filename.split('.').pop());
+    expect(langs).toContain('js');
+    expect(langs).toContain('py');
+    // TS has no blocks → skipped
+    expect(langs).not.toContain('ts');
+  });
+
+  it('preserves language order: js → ts → py', () => {
+    const nodes = [
+      node('a', { name: 'py', language: 'python', body: 'return 1' }),
+      node('b', { name: 'ts', language: 'typescript', body: 'return 2;' }),
+      node('c', { name: 'js', language: 'javascript', body: 'return 3;' }),
+    ];
+    const results = exportAllLanguages(nodes, [], 'javascript');
+    expect(results.map((r) => r.filename.match(/\.(\w+)$/)?.[1])).toEqual(['js', 'ts', 'py']);
   });
 });

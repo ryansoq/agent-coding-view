@@ -630,7 +630,7 @@ try {
   await page.waitForSelector('.react-flow__node');
   const [exportDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.getByRole('button', { name: 'Export' }).click(),
+    page.getByRole('button', { name: 'Export', exact: true }).click(),
   ]);
   const exportPath = await exportDownload.path();
   check('export download triggered', !!exportPath);
@@ -646,6 +646,22 @@ try {
     check('export filename ends in .js', name.endsWith('.js'), `filename: ${name}`);
   }
 
+  // 9d1. Export all — with both JS and Python seed blocks on the canvas,
+  // clicking Export all should trigger 2 downloads (one .js, one .py).
+  log('\n=== 9d1. Export all (multi-language) ===');
+  const exportAllDownloads = [];
+  const onDownload = (d) => exportAllDownloads.push(d);
+  page.on('download', onDownload);
+  await page.getByRole('button', { name: 'Export all', exact: true }).click();
+  // Wait for both downloads (150ms gap between them)
+  await page.waitForFunction(() => true, { timeout: 500 }).catch(() => {});
+  await page.waitForTimeout(600);
+  page.off('download', onDownload);
+  check('export all triggers 2 downloads', exportAllDownloads.length === 2, `count=${exportAllDownloads.length}`);
+  const filenames = exportAllDownloads.map((d) => d.suggestedFilename());
+  check('export all includes a .js file', filenames.some((n) => n.endsWith('.js')), filenames.join(', '));
+  check('export all includes a .py file', filenames.some((n) => n.endsWith('.py')), filenames.join(', '));
+
   // 9f. Import JS — round-trip: export the seed graph, clear, import the
   // exported file, verify validate is back as a block.
   log('\n=== 9f. import JS round-trip ===');
@@ -659,7 +675,7 @@ try {
 
   const [importExport] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.getByRole('button', { name: 'Export' }).click(),
+    page.getByRole('button', { name: 'Export', exact: true }).click(),
   ]);
   const exportedPath = await importExport.path();
   check('export downloaded for round-trip', !!exportedPath);

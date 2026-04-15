@@ -13,7 +13,7 @@ import { Inspector } from './Inspector';
 import { SettingsModal } from './SettingsModal';
 import { useSettingsStore } from './settingsStore';
 import { computeLayout } from './layout';
-import { exportGraph } from './exporter';
+import { exportGraph, exportAllLanguages } from './exporter';
 import { importSource } from './importer';
 import { IssuesModal } from './IssuesModal';
 import { TemplatesModal } from './TemplatesModal';
@@ -127,21 +127,46 @@ function Canvas() {
     [importGraph],
   );
 
+  const downloadText = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const onExport = useCallback(() => {
     const { nodes: n, edges: e } = useGraphStore.getState();
     const { language } = useSettingsStore.getState();
     if (n.length === 0) return;
     try {
       const { filename, content } = exportGraph(n, e, language, language);
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadText(filename, content);
     } catch (err) {
       alert(`Export failed: ${(err as Error).message}`);
+    }
+  }, []);
+
+  const onExportAll = useCallback(async () => {
+    const { nodes: n, edges: e } = useGraphStore.getState();
+    const { language } = useSettingsStore.getState();
+    if (n.length === 0) return;
+    try {
+      const results = exportAllLanguages(n, e, language);
+      if (results.length === 0) {
+        alert('No exportable blocks in the graph.');
+        return;
+      }
+      for (const r of results) {
+        downloadText(r.filename, r.content);
+        // Small gap so the browser treats each download as its own gesture —
+        // Chrome occasionally throttles back-to-back downloads otherwise.
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+    } catch (err) {
+      alert(`Export all failed: ${(err as Error).message}`);
     }
   }, []);
 
@@ -279,6 +304,7 @@ function Canvas() {
         <button onClick={onRunAll} title="Run tests on every TDD block in sequence">Run all</button>
         <button onClick={onLayout} title="Auto-layout via dagre (left→right)">Layout</button>
         <button onClick={onExport} title="Export all blocks of the default language as one source file">Export</button>
+        <button onClick={onExportAll} title="Export every language group as a separate file">Export all</button>
         <button onClick={onImportClick} title="Import a .js or .py file — each top-level function becomes a block">Import</button>
         <button
           onClick={() => setIssuesOpen(true)}

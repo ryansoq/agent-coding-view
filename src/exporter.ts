@@ -118,3 +118,26 @@ export function exportGraph(
   }
   throw new Error(`Export not supported for language "${language}".`);
 }
+
+/**
+ * Export every supported language that has at least one block assigned to
+ * it (or inheriting through defaultLanguage). Returns a list of files the
+ * caller can download one at a time. Order matches SUPPORTED_EXPORT_LANGS.
+ */
+const SUPPORTED_EXPORT_LANGS = ['javascript', 'typescript', 'python'] as const;
+
+export function exportAllLanguages(
+  nodes: FBlockNode[],
+  edges: Edge[],
+  defaultLanguage: string,
+): ExportResult[] {
+  const out: ExportResult[] = [];
+  for (const lang of SUPPORTED_EXPORT_LANGS) {
+    const matching = nodes.filter(
+      (n) => (n.data.language || defaultLanguage) === lang,
+    );
+    if (matching.length === 0) continue;
+    out.push(exportGraph(nodes, edges, lang, defaultLanguage));
+  }
+  return out;
+}
