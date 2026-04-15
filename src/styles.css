@@ -77,6 +77,26 @@ html, body, #root {
 }
 .session-cost:hover { background: var(--panel-2); }
 
+.toolbar-search {
+  background: #10141c;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  min-width: 180px;
+}
+.toolbar-search:focus { border-color: var(--accent); }
+.toolbar-search::placeholder { color: var(--muted); }
+
+.react-flow__node.search-dim {
+  opacity: 0.18;
+  transition: opacity 150ms ease;
+}
+.react-flow__node.search-dim:hover { opacity: 0.5; }
+
 .workspace {
   flex: 1;
   display: flex;

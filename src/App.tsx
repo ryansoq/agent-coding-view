@@ -49,6 +49,8 @@ function Canvas() {
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const onRunAll = useCallback(async () => {
     const state = useGraphStore.getState();
@@ -149,6 +151,24 @@ function Canvas() {
 
   const nodeTypes = useMemo(() => ({ fblock: FunctionBlockNode }), []);
 
+  // Derived nodes with a search-dim className when a query is active
+  // and the block doesn't match. Layout and positions stay intact so the
+  // graph's structure is still legible — only visual opacity changes.
+  const displayNodes = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return nodes;
+    return nodes.map((n) => {
+      const d = n.data;
+      const hit =
+        d.name.toLowerCase().includes(q) ||
+        d.signature.toLowerCase().includes(q) ||
+        d.body.toLowerCase().includes(q) ||
+        d.spec.toLowerCase().includes(q) ||
+        d.tests.toLowerCase().includes(q);
+      return hit ? n : { ...n, className: 'search-dim' };
+    });
+  }, [nodes, search]);
+
   // Derived edges with animated=true when the downstream block is busy.
   // This gives a live "execution trace" effect during Run all or during
   // any in-flight generate — edges feeding a running block pulse so you
@@ -202,8 +222,17 @@ function Canvas() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable;
       const ctrl = e.ctrlKey || e.metaKey;
+      // Ctrl/Cmd+K focuses the search input — works from anywhere,
+      // including inside form fields, since it's a global app shortcut.
+      if (ctrl && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+      if (inField) return;
       if (!ctrl) return;
       if (e.key === 'z' || e.key === 'Z') {
         e.preventDefault();
@@ -232,6 +261,15 @@ function Canvas() {
             Session: {formatCost(sessionCost)}
           </span>
         )}
+        <input
+          ref={searchInputRef}
+          className="toolbar-search"
+          type="search"
+          placeholder="Search blocks  (⌘K)"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          spellCheck={false}
+        />
         <span className="spacer" />
         <button className="primary" onClick={() => addBlock()}>+ Add block</button>
         <button onClick={() => setTemplatesOpen(true)} title="Create a block from a preset template">Templates</button>
@@ -271,7 +309,7 @@ function Canvas() {
       <div className="workspace">
         <div className="canvas">
           <ReactFlow
-            nodes={nodes}
+            nodes={displayNodes}
             edges={displayEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}

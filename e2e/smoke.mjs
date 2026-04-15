@@ -248,6 +248,31 @@ try {
   check('undo restores node count', msUndoNodes === msBefore, `${msBefore} vs ${msUndoNodes}`);
   check('undo restores edge count', msUndoEdges === msEdgesBefore, `${msEdgesBefore} vs ${msUndoEdges}`);
 
+  // 7f. Search filter — typing in the toolbar search should dim non-matching
+  // blocks (CSS class search-dim). Typing "validate" should leave validate
+  // at full opacity and dim the other 3 seed blocks.
+  log('\n=== 7f. search filter ===');
+  const searchInput = page.locator('.toolbar-search');
+  await searchInput.fill('validate');
+  await page.waitForTimeout(200);
+  const dimmed = await page.locator('.react-flow__node.search-dim').count();
+  const total = await page.locator('.react-flow__node').count();
+  check('some nodes dim when search is active', dimmed > 0, `${dimmed}/${total}`);
+  check('at least one node stays un-dimmed (match)', dimmed < total, `${dimmed}/${total}`);
+  // Clear search
+  await searchInput.fill('');
+  await page.waitForTimeout(200);
+  const afterClear = await page.locator('.react-flow__node.search-dim').count();
+  check('clearing search un-dims all', afterClear === 0, `${afterClear}`);
+  // Cmd/Ctrl+K focuses the search input from outside a field
+  await page.locator('.canvas').click({ position: { x: 10, y: 10 } });
+  await page.waitForTimeout(100);
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(100);
+  const focused = await page.evaluate(() => document.activeElement?.classList.contains('toolbar-search'));
+  check('Ctrl+K focuses search input', !!focused);
+  await page.keyboard.press('Escape');
+
   // 7c. Undo/redo for structural ops — add a block, undo, assert it's gone;
   // redo, assert it's back.
   log('\n=== 7c. undo/redo ===');
