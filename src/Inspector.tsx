@@ -375,30 +375,6 @@ export function Inspector() {
           />
         </label>
 
-        <label className="field">
-          <span className="field__label">Language</span>
-          <select
-            className="field__input"
-            value={d.language}
-            onChange={(e) => patch(selected.id, { language: e.target.value })}
-          >
-            <option value="">Inherit global ({labelFor(defaultLanguage)})</option>
-            {LANGUAGES.map((l) => (
-              <option key={l.id} value={l.id}>{l.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span className="field__label">Signature</span>
-          <input
-            className="field__input field__input--mono"
-            value={d.signature}
-            onChange={(e) => patch(selected.id, { signature: e.target.value })}
-            spellCheck={false}
-          />
-        </label>
-
         <div className="field">
           <span className="field__label">Development mode</span>
           <div className="segmented">
@@ -447,22 +423,6 @@ export function Inspector() {
             />
           </label>
         )}
-
-        <label className="field">
-          <span className="field__label">Scope (file globs, one per line)</span>
-          <textarea
-            className="field__input field__input--mono"
-            rows={3}
-            value={d.scope.join('\n')}
-            onChange={(e) =>
-              patch(selected.id, {
-                scope: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean),
-              })
-            }
-            placeholder="src/feature/**/*.ts"
-            spellCheck={false}
-          />
-        </label>
 
         <div className="field">
           <div className="field__row">
@@ -578,6 +538,49 @@ export function Inspector() {
             </div>
           </div>
         )}
+
+        <details className="advanced">
+          <summary className="advanced__summary">Advanced</summary>
+          <label className="field">
+            <span className="field__label">Language</span>
+            <select
+              className="field__input"
+              value={d.language}
+              onChange={(e) => patch(selected.id, { language: e.target.value })}
+            >
+              <option value="">Inherit global ({labelFor(defaultLanguage)})</option>
+              {LANGUAGES.map((l) => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span className="field__label">Signature</span>
+            <input
+              className="field__input field__input--mono"
+              value={d.signature}
+              onChange={(e) => patch(selected.id, { signature: e.target.value })}
+              spellCheck={false}
+            />
+          </label>
+
+          <label className="field">
+            <span className="field__label">Scope (file globs, one per line)</span>
+            <textarea
+              className="field__input field__input--mono"
+              rows={3}
+              value={d.scope.join('\n')}
+              onChange={(e) =>
+                patch(selected.id, {
+                  scope: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean),
+                })
+              }
+              placeholder="src/feature/**/*.ts"
+              spellCheck={false}
+            />
+          </label>
+        </details>
 
         <div className="field">
           <div className="btn-group">

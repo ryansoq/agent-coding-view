@@ -416,13 +416,19 @@ try {
   // 7b. Delete/Backspace in an inspector textarea must not delete the block
   log('\n=== 7b. delete-key in textarea does not delete block ===');
   const beforeKey = (await page.$$('.react-flow__node')).length;
-  const scopeBox = page.locator('.inspector textarea').last(); // scope textarea
+  // Expand the Advanced <details> so Scope is visible, then target it.
+  await page.locator('.advanced__summary').click();
+  await page.waitForTimeout(100);
+  const scopeBox = page.locator('.inspector .advanced textarea').first();
   await scopeBox.click();
   await scopeBox.press('Backspace');
   await scopeBox.press('Delete');
   await page.waitForTimeout(200);
   const afterKey = (await page.$$('.react-flow__node')).length;
   check('textarea keystrokes do not delete node', afterKey === beforeKey, `${beforeKey} → ${afterKey}`);
+  // Close Advanced again so later sections aren't affected.
+  await page.locator('.advanced__summary').click();
+  await page.waitForTimeout(100);
 
   // 8. Double-click name enters edit mode
   log('\n=== 8. double-click name to edit ===');
