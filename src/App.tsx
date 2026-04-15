@@ -16,6 +16,7 @@ import { computeLayout } from './layout';
 import { exportGraph } from './exporter';
 import { importSource } from './importer';
 import { IssuesModal } from './IssuesModal';
+import { TemplatesModal } from './TemplatesModal';
 import { countIssues } from './validation';
 import { runTests, isLanguageSandboxed } from './sandbox/runner';
 
@@ -42,6 +43,7 @@ function Canvas() {
   const issueCounts = useMemo(() => countIssues(nodes, edges), [nodes, edges]);
 
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const onRunAll = useCallback(async () => {
     const state = useGraphStore.getState();
@@ -199,6 +201,7 @@ function Canvas() {
         <span className="hint">P2</span>
         <span className="spacer" />
         <button className="primary" onClick={() => addBlock()}>+ Add block</button>
+        <button onClick={() => setTemplatesOpen(true)} title="Create a block from a preset template">Templates</button>
         <button onClick={deleteSelected} title="Delete selected (Del)">Delete</button>
         <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl/Cmd+Z)">Undo</button>
         <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z / Ctrl+Y)">Redo</button>
@@ -263,6 +266,7 @@ function Canvas() {
       </div>
       <SettingsModal />
       <IssuesModal isOpen={issuesOpen} onClose={() => setIssuesOpen(false)} />
+      <TemplatesModal isOpen={templatesOpen} onClose={() => setTemplatesOpen(false)} />
     </div>
   );
 }

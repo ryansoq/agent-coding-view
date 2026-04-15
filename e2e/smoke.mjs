@@ -271,6 +271,26 @@ try {
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.waitForTimeout(150);
 
+  // 7e. Templates modal — click a template, verify a block is created
+  // with the preset name and tests.
+  log('\n=== 7e. templates modal ===');
+  const beforeTpl = (await page.$$('.react-flow__node')).length;
+  await page.getByRole('button', { name: 'Templates' }).click();
+  await page.waitForSelector('.template-row', { timeout: 2000 });
+  const tplRows = await page.locator('.template-row').count();
+  check('templates modal lists rows', tplRows >= 3, `${tplRows} rows`);
+  // Click the first template
+  await page.locator('.template-row').first().click();
+  await page.waitForTimeout(200);
+  const afterTpl = (await page.$$('.react-flow__node')).length;
+  check('template creates a block', afterTpl === beforeTpl + 1, `${beforeTpl} → ${afterTpl}`);
+  // The newly-selected block's Inspector title should be the template name
+  const tplTitle = await page.locator('.inspector__title').textContent();
+  check('template block uses preset name', tplTitle === 'transform', `title: ${tplTitle}`);
+  // Undo to keep state clean
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(150);
+
   // 7a. Duplicate block — selecting validate and clicking Duplicate makes
   // a new "validate_copy" block and leaves the clone selected.
   log('\n=== 7a. duplicate block ===');

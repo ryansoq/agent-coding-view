@@ -486,6 +486,24 @@ html, body, #root {
 .issue-row--warning { border-left-color: #ffb454; }
 .issue-row--info { border-left-color: var(--accent); }
 
+/* Templates modal */
+.template-row {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.template-row:hover { background: #242c3c; border-color: var(--accent); }
+.template-row__label { font-weight: 600; font-size: 13px; color: var(--accent); }
+.template-row__desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
 /* React Flow dark theme tweaks */
 .react-flow__background { background: var(--bg); }
 .react-flow__controls {

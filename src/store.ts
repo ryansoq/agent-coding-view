@@ -32,7 +32,7 @@ interface GraphState {
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (conn: Connection) => void;
 
-  addBlock: (at?: { x: number; y: number }) => void;
+  addBlock: (at?: { x: number; y: number }, overrides?: Partial<FunctionBlockData>) => void;
   deleteSelected: () => void;
   duplicateBlock: (id: string) => void;
   selectOnly: (id: string) => void;
@@ -212,13 +212,16 @@ export const useGraphStore = create<GraphState>()(
       };
     }),
 
-  addBlock: (at) =>
+  addBlock: (at, overrides) =>
     set((state) => {
       const id = nextId();
       const globalLang = useSettingsStore.getState().language;
       const langDef = LANGUAGES.find((l) => l.id === globalLang);
       const data = defaultBlockData(`block_${id}`);
       if (langDef) data.signature = langDef.sampleSignature;
+      // Template overrides win over defaults and the auto-picked signature,
+      // which lets presets bring their own signature + body + tests.
+      if (overrides) Object.assign(data, overrides);
       const node: FBlockNode = {
         id,
         type: 'fblock',
