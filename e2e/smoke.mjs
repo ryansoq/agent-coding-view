@@ -17,25 +17,50 @@ async function waitForVite() {
       detached: false,
     });
     let ready = false;
-    proc.stdout.on('data', (chunk) => {
-      const s = chunk.toString();
-      const m = s.match(/Local:\s+(http:\/\/[^\s]+)/);
-      if (m && !ready) {
-        ready = true;
-        resolve({ proc, url: m[1].replace(/\/$/, '') });
-      }
-    });
+    const settle = (result, err) => {
+      if (ready) return;
+      ready = true;
+      if (err) reject(err);
+      else resolve(result);
+    };
+
+    // Log everything vite prints so CI failures are debuggable.
+    proc.stdout.on('data', (c) => process.stdout.write('[vite] ' + c));
     proc.stderr.on('data', (c) => process.stderr.write('[vite stderr] ' + c));
     proc.on('exit', (code) => {
-      if (!ready) reject(new Error(`vite exited early with code ${code}`));
+      settle(null, new Error(`vite exited early with code ${code}`));
     });
-    // CI runners (especially on first run without node_modules/.vite cache)
-    // can take 30+ seconds for Vite's dep pre-bundle. Locally it's <1s.
-    const READY_TIMEOUT_MS = process.env.CI ? 90_000 : 15_000;
-    setTimeout(() => {
-      if (!ready)
-        reject(new Error(`vite did not become ready within ${READY_TIMEOUT_MS}ms`));
-    }, READY_TIMEOUT_MS);
+
+    // Vite's stdout parsing is fragile under non-TTY (CI buffers per pipe
+    // and the "Local: http://..." line may arrive late or chunked oddly).
+    // Poll the default dev URL instead: that's the ground truth.
+    const url = 'http://127.0.0.1:5173';
+    const READY_TIMEOUT_MS = process.env.CI ? 120_000 : 30_000;
+    const POLL_MS = 500;
+    const start = Date.now();
+
+    const poll = async () => {
+      if (ready) return;
+      if (Date.now() - start > READY_TIMEOUT_MS) {
+        try { proc.kill('SIGTERM'); } catch { /* noop */ }
+        settle(
+          null,
+          new Error(`vite did not respond at ${url} within ${READY_TIMEOUT_MS}ms`),
+        );
+        return;
+      }
+      try {
+        const res = await fetch(url);
+        if (res.status === 200) {
+          settle({ proc, url });
+          return;
+        }
+      } catch {
+        // connection refused → not ready yet
+      }
+      setTimeout(poll, POLL_MS);
+    };
+    setTimeout(poll, 300);
   });
 }
 
