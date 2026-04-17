@@ -91,18 +91,23 @@ function pushHistory(state: GraphState): Pick<GraphState, 'history' | 'future'> 
 // ---------------------------------------------------------------------------
 
 const seedNodes: FBlockNode[] = [
+  // ── SDD block — has a spec + body, showing the "describe then generate" flow ──
   {
     id: nextId(),
     type: 'fblock',
     position: { x: 80, y: 120 },
     data: {
-      ...defaultBlockData('parseInput'),
-      signature: '(raw: string) => Parsed',
+      ...defaultBlockData('greet'),
+      signature: '(name) => string',
       mode: 'SDD',
-      spec: 'Parse a raw user query into structured form.',
+      language: 'javascript',
+      spec: 'Return a friendly greeting. If name is empty, default to "World".',
+      body: `if (!name) name = 'World';
+return 'Hello, ' + name + '!';`,
       status: 'specd',
     },
   },
+  // ── TDD JS block — tests + passing body, green out of the box ──
   {
     id: nextId(),
     type: 'fblock',
@@ -124,9 +129,11 @@ test('trims whitespace', () => {
       body: `const trimmed = s.trim();
 if (!trimmed) throw new Error('empty');
 return trimmed;`,
-      status: 'specd',
+      status: 'passing',
+      testCounts: { passed: 3, total: 3 },
     },
   },
+  // ── Manual block — stub, shows the "start from scratch" state ──
   {
     id: nextId(),
     type: 'fblock',
@@ -135,9 +142,11 @@ return trimmed;`,
       ...defaultBlockData('enrich'),
       signature: '(p: Parsed) => Enriched',
       mode: 'manual',
+      spec: 'Add metadata to the parsed input — timestamps, source tags, etc.',
       status: 'stub',
     },
   },
+  // ── TDD Python block — tests + passing body, green out of the box ──
   {
     id: nextId(),
     type: 'fblock',
@@ -157,7 +166,8 @@ if not s:
 lowered = s.lower().strip()
 spaced = re.sub(r'\\s+', '-', lowered)
 return re.sub(r'[^a-z0-9-]', '', spaced)`,
-      status: 'specd',
+      status: 'passing',
+      testCounts: { passed: 4, total: 4 },
     },
   },
 ];

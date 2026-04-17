@@ -158,10 +158,13 @@ try {
   const passingBlock = await page.locator('.fblock.status-passing').count();
   check('validate block gets status-passing class', passingBlock >= 1, `saw ${passingBlock}`);
 
-  const validateFooterText = await page
-    .locator('.fblock.status-passing .fblock__footer')
-    .first()
-    .textContent();
+  // Target the specific validate card (not just any passing block, since
+  // py_slug also starts passing with 4/4).
+  const validateCard2 = page
+    .locator('.react-flow__node')
+    .filter({ has: page.locator('.fblock__name', { hasText: /^validate$/ }) })
+    .first();
+  const validateFooterText = await validateCard2.locator('.fblock__footer').textContent();
   check(
     'card footer shows 3/3 test count',
     validateFooterText?.includes('3/3') ?? false,
@@ -250,9 +253,9 @@ try {
   const msAfter = (await page.$$('.react-flow__node')).length;
   const msEdgesAfter = (await page.$$('.react-flow__edge')).length;
   check('multi-select delete removes both', msAfter === msBefore - 2, `${msBefore} → ${msAfter}`);
-  // The two seed blocks we deleted (parseInput, validate) had an edge
-  // between them, plus parseInput→enrich. The first is orphaned by
-  // deleting parseInput; the second is orphaned by deleting validate's
+  // The two seed blocks we deleted (greet, validate) had an edge
+  // between them, plus greet→enrich. The first is orphaned by
+  // deleting greet; the second is orphaned by deleting validate's
   // upstream. Assert at least some edges got cleaned.
   check('orphaned edges removed', msEdgesAfter < msEdgesBefore, `${msEdgesBefore} → ${msEdgesAfter}`);
   // Undo — both nodes AND their edges should come back.
@@ -769,7 +772,7 @@ try {
     const { readFileSync } = await import('node:fs');
     const mmd = readFileSync(mmdPath, 'utf8');
     check('Mermaid output starts with flowchart LR', mmd.startsWith('flowchart LR'));
-    check('Mermaid output contains parseInput block', mmd.includes('parseInput'));
+    check('Mermaid output contains greet block', mmd.includes('greet'));
     check('Mermaid output has a status class', /:::status_/.test(mmd));
   }
 
@@ -1041,15 +1044,15 @@ function main(x) { return helper(helper(x)); }
   await mockedPage.goto(vite.url, { waitUntil: 'networkidle' });
   await mockedPage.waitForSelector('.react-flow__node');
 
-  // Pick parseInput (SDD seed) and click Generate.
+  // Pick greet (SDD seed) and click Generate.
   const mockNodes = mockedPage.locator('.react-flow__node');
   const mockCount = await mockNodes.count();
   let parseIdx = -1;
   for (let i = 0; i < mockCount; i++) {
     const val = await mockNodes.nth(i).locator('.fblock__name').first().textContent();
-    if (val?.trim() === 'parseInput') { parseIdx = i; break; }
+    if (val?.trim() === 'greet') { parseIdx = i; break; }
   }
-  check('found parseInput on canvas', parseIdx >= 0);
+  check('found greet on canvas', parseIdx >= 0);
   if (parseIdx >= 0) {
     await mockNodes.nth(parseIdx).locator('.fblock__body').click();
     await mockedPage.waitForTimeout(200);
@@ -1162,9 +1165,14 @@ function main(x) { return helper(helper(x)); }
 
     await mockedPage.locator('.inspector button').filter({ hasText: 'Auto TDD' }).click();
 
-    // Wait for the block to reach passing status (the regen loop converges).
+    // Wait for the block to enter generating first (validate starts passing,
+    // so we must see it leave that state before waiting for it to come back).
     try {
-      await mockedPage.waitForSelector('.fblock.status-passing', { timeout: 10000 });
+      await mockedPage.waitForSelector('.fblock.status-generating', { timeout: 3000 });
+    } catch { /* might transition too fast */ }
+    // Now wait for it to reach passing status (the regen loop converges).
+    try {
+      await mockedPage.waitForSelector('.fblock.status-passing', { timeout: 15000 });
       check('Auto TDD converged to passing', true);
     } catch {
       const curStatus = await mockedPage.locator('.inspector__title').textContent();
@@ -1209,18 +1217,18 @@ function main(x) { return helper(helper(x)); }
     }
   });
 
-  // Select parseInput (SDD seed, no body yet)
+  // Select greet (SDD seed — already has a body, button says "Regenerate")
   const stopNodes = mockedPage.locator('.react-flow__node');
   const stopCount = await stopNodes.count();
   let stopIdx = -1;
   for (let i = 0; i < stopCount; i++) {
     const val = await stopNodes.nth(i).locator('.fblock__name').first().textContent();
-    if (val?.trim() === 'parseInput') { stopIdx = i; break; }
+    if (val?.trim() === 'greet') { stopIdx = i; break; }
   }
   if (stopIdx >= 0) {
     await stopNodes.nth(stopIdx).locator('.fblock__body').click();
     await mockedPage.waitForTimeout(200);
-    // Click Generate (parseInput already has a body from section 11, so it
+    // Click Generate (greet already has a body from section 11, so it
     // says 'Regenerate' now).
     await mockedPage.locator('.inspector button.primary').first().click();
     // Wait for the block to enter generating state
@@ -1228,8 +1236,14 @@ function main(x) { return helper(helper(x)); }
     // Click Stop (the same .primary button becomes "Stop" while busy)
     await mockedPage.waitForTimeout(300);
     await mockedPage.locator('.inspector button.primary').first().click();
-    await mockedPage.waitForTimeout(500);
-    // The block's card should NO LONGER have status-generating
+    // Give the abort + state cleanup enough time — the Anthropic SDK's
+    // internal stream teardown is async and the React re-render follows.
+    try {
+      await mockedPage.waitForFunction(
+        () => !document.querySelector('.fblock.status-generating'),
+        { timeout: 3000 },
+      );
+    } catch { /* checked below */ }
     const stillGenerating = await mockedPage.locator('.fblock.status-generating').count();
     check('block exits generating state after Stop', stillGenerating === 0, `saw ${stillGenerating}`);
     // And no error banner — Stop is intentional, not an error
@@ -1271,7 +1285,7 @@ function main(x) { return helper(helper(x)); }
   let errIdx = -1;
   for (let i = 0; i < errCount; i++) {
     const val = await errNodes.nth(i).locator('.fblock__name').first().textContent();
-    if (val?.trim() === 'parseInput') { errIdx = i; break; }
+    if (val?.trim() === 'greet') { errIdx = i; break; }
   }
   if (errIdx >= 0) {
     await errNodes.nth(errIdx).locator('.fblock__body').click();
