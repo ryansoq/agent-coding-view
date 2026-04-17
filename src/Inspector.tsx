@@ -77,6 +77,19 @@ export function Inspector() {
       window.clearTimeout(iterationInfoTimer.current);
       iterationInfoTimer.current = null;
     }
+    // Clean up any in-flight generation or test run from the PREVIOUS
+    // selection so callbacks don't patch a block that's no longer selected.
+    return () => {
+      if (genAbort.current) {
+        genAbort.current();
+        genAbort.current = null;
+      }
+      if (testHandle.current) {
+        testHandle.current.abort();
+        testHandle.current = null;
+      }
+      userAborted.current.aborted = true;
+    };
   }, [selected?.id]);
 
   // Global Ctrl/Cmd+Enter dispatches 'acv:run-current-tests' from App.tsx —
@@ -128,22 +141,32 @@ export function Inspector() {
   const canRunTests = isLanguageSandboxed(effectiveLanguage);
 
   const onGenerate = () => {
+    // Capture the block id so async callbacks target the correct block
+    // even if the user selects a different one mid-stream.
+    const blockId = selected.id;
     setError(null);
     setLastResult(null);
     clearIterationInfoTimer();
     setIterationInfo(null);
     setLastUsage(null);
     userAborted.current.aborted = false;
-    patch(selected.id, { body: '', status: 'generating', testCounts: undefined });
+    patch(blockId, { body: '', status: 'generating', testCounts: undefined });
 
     const handle = generateBody(
       apiKey,
       model,
+      // Snapshot the current block data + neighbors at call time — this is
+      // what feeds the prompt. Async callbacks below use `blockId` (stable)
+      // instead of the closure-captured `selected` (can go stale).
       { block: d, neighbors, language: effectiveLanguage },
       {
-        onDelta: (delta) => appendBody(selected.id, delta),
+        onDelta: (delta) => {
+          if (!liveBlock(blockId)) return; // block was deleted mid-stream
+          appendBody(blockId, delta);
+        },
         onDone: ({ body, usage }) => {
-          patch(selected.id, { body, status: 'specd' });
+          if (!liveBlock(blockId)) return;
+          patch(blockId, { body, status: 'specd' });
           if (usage) {
             setLastUsage(usage);
             useCostStore.getState().record(model, usage);
@@ -151,15 +174,13 @@ export function Inspector() {
           genAbort.current = null;
         },
         onError: (err) => {
-          // The underlying stream swallows post-abort errors, but belt-and-suspenders:
-          // if userAborted flipped between the stream firing and onError running, skip.
           if (userAborted.current.aborted) {
-            patch(selected.id, { status: 'stub' });
+            if (liveBlock(blockId)) patch(blockId, { status: 'stub' });
             genAbort.current = null;
             return;
           }
           setError(err.message);
-          patch(selected.id, { status: 'stub' });
+          if (liveBlock(blockId)) patch(blockId, { status: 'stub' });
           genAbort.current = null;
         },
       },

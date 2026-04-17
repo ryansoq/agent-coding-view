@@ -1163,16 +1163,19 @@ function main(x) { return helper(helper(x)); }
     const tddTestsBox = mockedPage.locator('.inspector textarea').first();
     await tddTestsBox.fill(`test('returns 42', () => expect(validate('x')).toBe(42));`);
 
+    // Grab a reference to the specific validate card so we can watch its
+    // status transitions. Other blocks (py_slug) start as passing — a
+    // generic `.fblock.status-passing` selector would match them instead
+    // of waiting for validate.
+    const validateTddCard = tddNodes.nth(validIdx2);
     await mockedPage.locator('.inspector button').filter({ hasText: 'Auto TDD' }).click();
 
-    // Wait for the block to enter generating first (validate starts passing,
-    // so we must see it leave that state before waiting for it to come back).
+    // Wait for validate to leave passing (enters generating), then come back.
     try {
-      await mockedPage.waitForSelector('.fblock.status-generating', { timeout: 3000 });
+      await validateTddCard.locator('.fblock.status-generating').waitFor({ timeout: 3000 });
     } catch { /* might transition too fast */ }
-    // Now wait for it to reach passing status (the regen loop converges).
     try {
-      await mockedPage.waitForSelector('.fblock.status-passing', { timeout: 15000 });
+      await validateTddCard.locator('.fblock.status-passing').waitFor({ timeout: 15000 });
       check('Auto TDD converged to passing', true);
     } catch {
       const curStatus = await mockedPage.locator('.inspector__title').textContent();

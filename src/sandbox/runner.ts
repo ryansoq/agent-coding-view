@@ -272,11 +272,13 @@ function getPythonWorker(): Worker {
   const w = new Worker(new URL('./python-worker.ts', import.meta.url));
   w.onmessage = (e: MessageEvent) => {
     const { id, result } = e.data as { id: number; result: RunResult };
-    const resolver = pythonPending.get(id);
-    if (resolver) {
-      pythonPending.delete(id);
-      resolver(result);
-    }
+    // Guard: after resetPythonWorker() the map is cleared, but the worker
+    // may still deliver in-flight messages before it terminates. Silently
+    // drop them — their callers already received an error from the reset.
+    if (!pythonPending.has(id)) return;
+    const resolver = pythonPending.get(id)!;
+    pythonPending.delete(id);
+    resolver(result);
   };
   w.onerror = (e: ErrorEvent) => {
     // Pyodide blew up (failed CDN fetch, initialisation crash, etc).
